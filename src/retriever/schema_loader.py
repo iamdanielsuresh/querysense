@@ -1,4 +1,5 @@
 import csv
+from pathlib import Path
 
 def load_schema(csv_path):
     schema_items = []
@@ -17,6 +18,8 @@ def load_schema(csv_path):
 
 
 if __name__ == "__main__":
-    schema = load_schema("/Users/daniel/Projects/text2sql/bquxjob_26d42422_19c09963dbb.csv")
-    print(f"Loaded {len(schema)} schema coloums")
+    project_root = Path(__file__).resolve().parents[2]
+    schema_path = project_root / "data" / "schemas" / "bigcommerce_schema_1.csv"
+    schema = load_schema(str(schema_path))
+    print(f"Loaded {len(schema)} schema columns")
     print(schema[:5])
