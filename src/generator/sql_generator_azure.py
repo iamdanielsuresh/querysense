@@ -5,11 +5,16 @@ This module:
 - Takes a natural language question
 - Takes retrieved schema columns
 - Uses a fine-tuned GPT model on Azure
-- Outputs BigQuery-compatible SQL
+- Outputs SQL compatible with specified dialect (BigQuery or SQLite)
+
+Prompt versions are managed in prompts.py for easy A/B testing.
 """
 import os
+import re
 from dotenv import load_dotenv
 from openai import AzureOpenAI
+
+from src.generator.prompts import get_sqlite_prompt, get_bigquery_prompt, get_active_versions
 
 # Load environment variables from .env file
 load_dotenv()
@@ -22,64 +27,60 @@ client = AzureOpenAI(
 )
 
 
+def _clean_sql_output(sql: str) -> str:
+    """Remove markdown code blocks and extra whitespace from LLM output."""
+    # Remove ```sql ... ``` or ``` ... ```
+    sql = re.sub(r"^```(?:sql)?\s*", "", sql.strip())
+    sql = re.sub(r"\s*```$", "", sql.strip())
+    return sql.strip()
 
-def generate_sql(question, schema_items):
+
+def generate_sql(question, schema_items, dialect="bigquery"):
     """
-    Generate BigQuery-compatible SQL using a fine-tuned Azure GPT model.
+    Generate SQL using a fine-tuned Azure GPT model.
 
     Inputs:
     - question (str): natural language analytics question
     - schema_items (list): output of SchemaRetriever (top-k columns)
+    - dialect (str): "bigquery" or "sqlite"
 
     Output:
     - sql (str): generated SQL query
     """
 
     # -----------------------------
-    # Build schema context
+    # Build schema context based on dialect
     # -----------------------------
-    # Convert retrieved schema columns into a compact text block
-    # This is the ONLY schema the model sees
-    # If a dataset prefix is configured, qualify table names
-    if BQ_DATASET:
-        schema_context = "\n".join(
-            f"{BQ_DATASET}.{s['table']}.{s['column']} ({s['type']})"
-            for s in schema_items
-        )
-    else:
+    if dialect == "sqlite":
+        # For SQLite: table.column (type)
         schema_context = "\n".join(
             f"{s['table']}.{s['column']} ({s['type']})"
             for s in schema_items
         )
-
-    # -----------------------------
-    # Prompt design
-    # -----------------------------
-    # We:
-    # - lock dialect to BigQuery
-    # - forbid hallucination
-    # - force SQL-only output
-    prompt = f"""
-You are an expert data engineer.
-
-Task:
-Generate a VALID Google BigQuery SQL query.
-
-Question:
-{question}
-
-Available schema columns:
-{schema_context}
-
-Rules:
-- Use backticks (`) around table names
-- ALWAYS qualify table names with the full dataset path shown above (e.g. `dataset.table`)
-- Do NOT invent tables or columns
-- Use JOINs only if required
-- For date/time filtering on TIMESTAMP columns, cast to DATE first: e.g. DATE(column) >= DATE_SUB(CURRENT_DATE(), INTERVAL 1 MONTH)
-- NEVER use TIMESTAMP_SUB with MONTH or YEAR intervals (BigQuery does not support it)
-- Output ONLY the SQL query
-"""
+        prompt_template = get_sqlite_prompt()
+        prompt = prompt_template.format(
+            question=question,
+            schema_context=schema_context
+        )
+        system_message = "You generate correct and executable SQLite SQL only."
+    else:
+        # For BigQuery: dataset.table.column (type)
+        if BQ_DATASET:
+            schema_context = "\n".join(
+                f"{BQ_DATASET}.{s['table']}.{s['column']} ({s['type']})"
+                for s in schema_items
+            )
+        else:
+            schema_context = "\n".join(
+                f"{s['table']}.{s['column']} ({s['type']})"
+                for s in schema_items
+            )
+        prompt_template = get_bigquery_prompt()
+        prompt = prompt_template.format(
+            question=question,
+            schema_context=schema_context
+        )
+        system_message = "You generate correct and executable BigQuery SQL only."
 
     # -----------------------------
     # Call Azure OpenAI Chat Completion
@@ -89,7 +90,7 @@ Rules:
         messages=[
             {
                 "role": "system",
-                "content": "You generate correct and executable BigQuery SQL only."
+                "content": system_message
             },
             {
                 "role": "user",
@@ -101,7 +102,8 @@ Rules:
         top_p=1.0
     )
 
-    # Extract SQL text
+    # Extract SQL text and clean up
     sql = response.choices[0].message.content.strip()
+    sql = _clean_sql_output(sql)
 
     return sql

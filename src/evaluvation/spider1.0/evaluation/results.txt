@@ -1,0 +1,44 @@
+#GPT-4o Mini (Finetuned with Spider)
+
+daniel@DANIELs-MacBook-Air spider % python evaluation/evaluate_model.py --dev_file dev.json --tables_file tables.json --db_dir database
+Starting evaluation on 1034 examples...
+100%|█████████████████████████████████████████████████████████████| 1034/1034 [15:13<00:00,  1.13it/s]
+
+--- Evaluation Results ---
+Total Examples: 1034
+Exact Match Accuracy: 46.62%
+Execution Accuracy:   76.60%
+Detailed results saved to evaluation_results.json
+daniel@DANIELs-MacBook-Air spider % 
+
+#GPT 4o (Finetuned with Spider)
+Starting evaluation on 1034 examples...
+100%|██████████████████████████████████████████████████████████████████████████████| 1034/1034 [18:48<00:00,  1.09s/it]
+
+--- Evaluation Results ---
+Total Examples: 1034
+Exact Match Accuracy: 50.68%
+Execution Accuracy:   78.05%
+Detailed results saved to evaluation_results.json
+daniel@DANIELs-MacBook-Air spider % 
+
+
+
+#GPT 5 Nano  (No FT)
+--- Evaluation Results ---
+Total Examples: 1034
+Exact Match Accuracy: 1.93%
+Execution Accuracy:   55.71%
+
+
+#Llama-4-Maverick-17B (No Finetuned)
+Using OpenAI Compatible: Llama-4-Maverick-17B-128E-Instruct-FP8
+Starting evaluation on 1034 examples...
+100%|█████████████████████████████████████| 1034/1034 [12:40<00:00,  1.36it/s]
+
+--- Evaluation Results ---
+Total Examples: 1034
+Exact Match Accuracy: 33.08%
+Execution Accuracy:   74.85%
+Detailed results saved to evaluation_results.json
+

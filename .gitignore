@@ -13,3 +13,18 @@ __pycache__/
 
 # OS
 .DS_Store
+
+# Project
+iteration_plan.md
+
+# Evaluation outputs
+**/detailed_results.csv
+**/evaluation_results.json
+
+# Results folder (large CSV files)
+results/
+
+# Large Spider database files (>50MB)
+src/evaluvation/spider1.0/database/soccer_1/
+src/evaluvation/spider1.0/database/wta_1/wta_1.sqlite
+src/evaluvation/spider1.0/database/baseball_1/schema.sql
