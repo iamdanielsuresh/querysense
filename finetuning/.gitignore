@@ -1,0 +1,5 @@
+# Generated datasets and training artifacts
+/data/*.jsonl
+/runs/
+/merged/
+/cache/
