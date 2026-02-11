@@ -24,6 +24,10 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.generator.sql_generator_azure import generate_sql
 from src.generator.prompts import get_active_versions
+from src.decomposition.query_decomposer import QueryDecomposer
+
+# Decomposer instance (initialized lazily based on --decompose flag)
+_decomposer = None
 
 
 # -----------------------------
@@ -142,7 +146,8 @@ def evaluate_single(
     example: Dict,
     schema: Dict,
     db_path: Path,
-    verbose: bool = False
+    verbose: bool = False,
+    use_decomposition: bool = False
 ) -> Dict:
     """
     Evaluate a single question.
@@ -174,9 +179,17 @@ def evaluate_single(
     
     # Step 1: Generate SQL using our pipeline
     try:
+        # Optionally apply query decomposition + CoT
+        gen_question = question
+        if use_decomposition and _decomposer is not None:
+            decomp = _decomposer.process(question, schema["columns"], dialect="sqlite")
+            gen_question = decomp["enhanced_question"]
+            result["complexity"] = decomp["complexity"]
+            result["complexity_score"] = decomp["complexity_score"]
+
         # Pass the full schema columns to the generator
         pred_sql = generate_sql(
-            question=question,
+            question=gen_question,
             schema_items=schema["columns"],
             dialect="sqlite"
         )
@@ -217,7 +230,8 @@ def evaluate_single(
 def run_evaluation(
     limit: Optional[int] = None,
     verbose: bool = True,
-    output_csv: Optional[str] = None
+    output_csv: Optional[str] = None,
+    use_decomposition: bool = False
 ) -> Dict:
     """
     Run the full Spider evaluation.
@@ -237,6 +251,7 @@ def run_evaluation(
     # Show active prompt version
     prompt_versions = get_active_versions()
     print(f"\n  Prompt Version: SQLite={prompt_versions['sqlite']}")
+    print(f"  Decomposition: {'ON' if use_decomposition else 'OFF'}")
     
     # Load data
     print("\n[1/4] Loading Spider data...")
@@ -263,7 +278,8 @@ def run_evaluation(
         
         db_path = get_db_path(db_id)
         
-        result = evaluate_single(example, schema, db_path, verbose=False)
+        result = evaluate_single(example, schema, db_path, verbose=False,
+                                use_decomposition=use_decomposition)
         results.append(result)
         
         # Progress update
@@ -334,13 +350,22 @@ def main():
                         help="Output CSV path (relative to project root)")
     parser.add_argument("--quiet", action="store_true",
                         help="Reduce output verbosity")
+    parser.add_argument("--decompose", action="store_true",
+                        help="Enable query decomposition + chain-of-thought")
     
     args = parser.parse_args()
+
+    # Initialize decomposer if requested
+    global _decomposer
+    if args.decompose:
+        _decomposer = QueryDecomposer(cot_enabled=True, decompose_enabled=True)
+        print("Query decomposition enabled")
     
     summary, results = run_evaluation(
         limit=args.limit,
         verbose=not args.quiet,
-        output_csv=args.output
+        output_csv=args.output,
+        use_decomposition=args.decompose
     )
     
     # Save summary to JSON

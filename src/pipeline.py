@@ -10,6 +10,7 @@ from src.retriever.schema_loader import load_schema
 from src.retriever.schema_retriever import SchemaRetriever
 from src.generator.sql_generator_azure import generate_sql
 from src.executor.bq_executor import execute_sql
+from src.decomposition.query_decomposer import QueryDecomposer
 
 
 def _divider(title):
@@ -33,6 +34,10 @@ if retriever._bm25 is not None:
     print(f"         BM25 index built: {len(retriever._bm25_corpus)} documents")
 else:
     print(f"         BM25 disabled (install rank_bm25 for hybrid retrieval)")
+
+# ── Step 2b: Query Decomposer ───────────────────────────────
+decomposer = QueryDecomposer(cot_enabled=True, decompose_enabled=True)
+print(f"[Step 2b] Query decomposer ready (CoT={decomposer.cot_enabled}, Decompose={decomposer.decompose_enabled})")
 
 
 def answer(question):
@@ -61,17 +66,32 @@ def answer(question):
     # Unpack items for downstream use
     retrieved_schema = [item for _, item in scored_results]
 
-    # ── Step 5: SQL Generation ──────────────────────────────
-    _divider("Step 5 — SQL Generation")
+    # ── Step 5: Query Decomposition & Reasoning ────────────
+    _divider("Step 5 — Query Decomposition")
+    decomp = decomposer.process(question, retrieved_schema)
+    print(f"Complexity     : {decomp['complexity']} (score={decomp['complexity_score']})")
+    if decomp['complexity_signals']:
+        print(f"Signals        : {', '.join(decomp['complexity_signals'])}")
+    if decomp['sub_questions']:
+        print(f"Sub-questions  :")
+        for i, sq in enumerate(decomp['sub_questions'], 1):
+            print(f"  {i}. {sq}")
+    if decomp['reasoning']:
+        print(f"Reasoning plan :\n{decomp['reasoning']}")
+
+    # ── Step 6: SQL Generation ──────────────────────────────
+    _divider("Step 6 — SQL Generation")
     schema_context = "\n".join(
         f"  {s['table']}.{s['column']} ({s['type']})" for s in retrieved_schema
     )
     print(f"Schema context sent to LLM:\n{schema_context}")
-    sql = generate_sql(question, retrieved_schema)
+    # Use enhanced question (with reasoning/decomposition) for generation
+    gen_question = decomp['enhanced_question']
+    sql = generate_sql(gen_question, retrieved_schema)
     print(f"\nGenerated SQL:\n{sql}")
 
-    # ── Step 6: Execution ───────────────────────────────────
-    _divider("Step 6 — BigQuery Execution")
+    # ── Step 7: Execution ─────────────────────────────────
+    _divider("Step 7 — BigQuery Execution")
     result = execute_sql(sql)
 
     if result["success"]:
@@ -84,8 +104,8 @@ def answer(question):
         print(f"Status : FAILED")
         print(f"Error  : {result['error']}")
 
-        # ── Step 7: Retry ───────────────────────────────────
-        _divider("Step 7 — Execution-Guided Retry")
+        # ── Step 8: Retry ─────────────────────────────────────
+        _divider("Step 8 — Execution-Guided Retry")
         retry_question = question + "\nPrevious SQL error: " + result["error"]
         sql = generate_sql(retry_question, retrieved_schema)
         print(f"Retry SQL:\n{sql}")
