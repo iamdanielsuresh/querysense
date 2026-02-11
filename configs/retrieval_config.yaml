@@ -1,0 +1,238 @@
+# Schema Retrieval Configuration
+# Dynamic table priors and retrieval settings
+
+retrieval:
+  # Number of top columns to return
+  top_k: 10
+
+  # Weight for semantic (embedding) similarity score (0-1)
+  semantic_weight: 0.65
+
+  # Weight for BM25 keyword score (0-1)
+  bm25_weight: 0.35
+
+  # Boost applied when a column's table matches a prior keyword
+  table_prior_boost: 0.15
+
+  # Column grouping: minimum number of hits from a table before
+  # pulling in related columns (foreign keys, IDs)
+  column_group_min_hits: 2
+
+  # Maximum extra columns added by column grouping per table
+  column_group_max_extra: 3
+
+  # Embedding model name
+  embedding_model: "all-MiniLM-L6-v2"
+
+  # Cache directory for embeddings (relative to project root)
+  cache_dir: ".cache/schema_embeddings"
+
+
+# Table priors: keyword -> list of preferred tables
+# These are applied as score boosts when the keyword appears in the question.
+# To update: add new keyword-table mappings or adjust existing ones.
+table_priors:
+  # Revenue & sales
+  revenue:
+    - orders
+    - order_product
+  sales:
+    - orders
+    - order_product
+  income:
+    - orders
+    - order_product
+  total:
+    - orders
+    - order_product
+  subtotal:
+    - orders
+  profit:
+    - orders
+    - order_product
+    - product
+
+  # Orders
+  order:
+    - orders
+    - order_product
+  purchase:
+    - orders
+    - order_product
+  transaction:
+    - order_transaction
+  payment:
+    - orders
+    - order_transaction
+  refund:
+    - order_refund
+    - orders
+
+  # Customers
+  customer:
+    - customer
+    - customer_address
+    - customer_group
+  buyer:
+    - customer
+    - orders
+  subscriber:
+    - subscriber
+
+  # Products
+  product:
+    - product
+    - order_product
+    - product_variant
+  item:
+    - product
+    - order_product
+  inventory:
+    - product
+    - product_variant
+  stock:
+    - product
+    - product_variant
+  sku:
+    - product
+    - product_variant
+    - order_product
+  brand:
+    - brand
+    - product
+  category:
+    - category_tree
+    - product_category
+
+  # Shipping
+  shipping:
+    - order_shipment
+    - order_shipping_address
+    - shipping_zone
+  shipment:
+    - order_shipment
+  delivery:
+    - order_shipment
+    - order_shipping_address
+  tracking:
+    - order_shipment
+
+  # Promotions
+  coupon:
+    - coupon
+    - order_coupon
+  discount:
+    - coupon
+    - order_coupon
+    - orders
+  promotion:
+    - coupon
+    - order_coupon
+  gift:
+    - gift_certificate
+
+  # Pricing
+  price:
+    - product
+    - price_list
+    - price_list_record
+  pricing:
+    - price_list
+    - price_list_record
+
+  # Reviews
+  review:
+    - product_review
+  rating:
+    - product_review
+    - product
+
+  # Store & channels
+  store:
+    - store
+  channel:
+    - channel
+    - channel_listing
+
+  # Geography
+  country:
+    - country
+    - country_state
+  state:
+    - country_state
+
+  # Tax
+  tax:
+    - order_tax
+    - tax_class
+
+  # Wishlist
+  wishlist:
+    - wishlist
+    - wishlist_item
+
+  # Currency
+  currency:
+    - currency
+
+
+# Temporal keyword detection
+time_keywords:
+  - "last month"
+  - "this month"
+  - "yesterday"
+  - "today"
+  - "last week"
+  - "this week"
+  - "last year"
+  - "this year"
+  - "month"
+  - "year"
+  - "week"
+  - "day"
+  - "date"
+  - "recent"
+  - "ago"
+  - "since"
+  - "between"
+  - "before"
+  - "after"
+  - "period"
+  - "quarter"
+
+# Column patterns considered as date/time columns
+date_column_patterns:
+  - "date"
+  - "time"
+  - "created"
+  - "modified"
+  - "shipped"
+
+# Column grouping: columns that should be pulled together
+# When any column from a table is retrieved, these "anchor" columns
+# are also included if not already present
+table_anchor_columns:
+  orders:
+    - id
+    - date_created
+    - status
+    - total_inc_tax
+    - customer_id
+  order_product:
+    - order_id
+    - product_id
+    - quantity
+    - price_inc_tax
+    - total_inc_tax
+  customer:
+    - id
+    - email
+    - first_name
+    - last_name
+    - date_created
+  product:
+    - id
+    - name
+    - price
+    - sku
+    - brand_id

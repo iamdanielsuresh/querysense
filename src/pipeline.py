@@ -19,13 +19,20 @@ def _divider(title):
 
 
 # ── Step 1: Schema Loading ──────────────────────────────────
-schema_path = PROJECT_ROOT / "data" / "schemas" / "bigcommerce_schema_cleaned.csv"
+# Prefer the enriched schema (with descriptions) if available
+enriched_path = PROJECT_ROOT / "data" / "schemas" / "bigcommerce_schema_enriched.csv"
+fallback_path = PROJECT_ROOT / "data" / "schemas" / "bigcommerce_schema_cleaned.csv"
+schema_path = enriched_path if enriched_path.exists() else fallback_path
 schema = load_schema(str(schema_path))
 print(f"[Step 1] Schema loaded: {len(schema)} columns from {schema_path.name}")
 
 # ── Step 2: Embedding schema columns ────────────────────────
 retriever = SchemaRetriever(schema)
 print(f"[Step 2] Schema embeddings computed: matrix shape = {retriever.schema_embeddings.shape}")
+if retriever._bm25 is not None:
+    print(f"         BM25 index built: {len(retriever._bm25_corpus)} documents")
+else:
+    print(f"         BM25 disabled (install rank_bm25 for hybrid retrieval)")
 
 
 def answer(question):

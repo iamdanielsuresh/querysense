@@ -17,6 +17,9 @@ __pycache__/
 # Project
 iteration_plan.md
 
+# Schema embedding cache
+.cache/
+
 # Evaluation outputs
 **/detailed_results.csv
 **/evaluation_results.json

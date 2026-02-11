@@ -1,0 +1,570 @@
+table_name,column_name,data_type,description
+brand,custom_url,STRING,Custom URL path for the brand page
+brand,custom_url_is_customized,BOOL,Whether the brand URL has been manually customized
+brand,id,INT64,Unique identifier for the brand
+brand,meta_description,STRING,SEO meta description for the brand page
+brand,name,STRING,Display name of the brand
+brand,page_title,STRING,SEO page title for the brand
+brand,search_keywords,STRING,Keywords associated with the brand for search
+cart,base_amount,FLOAT64,Base cart amount before discounts and taxes
+cart,cart_amount,FLOAT64,Total cart amount including adjustments
+cart,channel_id,INT64,Sales channel where the cart was created
+cart,created_time,TIMESTAMP,Timestamp when the cart was created
+cart,currency_code,STRING,Currency code for the cart (e.g. USD)
+cart,customer_id,INT64,Customer who owns this cart
+cart,discount_amount,FLOAT64,Total discount amount applied to the cart
+cart,email,STRING,Email address associated with the cart
+cart,id,STRING,Unique identifier for the cart
+cart,locale,STRING,Locale/language setting for the cart
+cart,parent_id,STRING,Parent cart ID for nested cart relationships
+cart,tax_included,BOOL,Whether prices in the cart include tax
+cart,updated_time,TIMESTAMP,Timestamp when the cart was last updated
+category_tree,category_id,INT64,Unique identifier for the category
+category_tree,default_product_sort,STRING,Default sorting method for products in this category
+category_tree,description,STRING,Description text for the category
+category_tree,is_customized,BOOL,Whether the category has been customized
+category_tree,is_visible,BOOL,Whether the category is visible on the storefront
+category_tree,meta_description,STRING,SEO meta description for the category
+category_tree,name,STRING,Display name of the product category
+category_tree,page_title,STRING,SEO page title for the category
+category_tree,parent_id,INT64,Parent category ID for hierarchical structure
+category_tree,path,STRING,Full path of the category in the tree hierarchy
+category_tree,search_keywords,STRING,Keywords for category search
+category_tree,sort_order,INT64,Display sort order of the category
+category_tree,tree_id,INT64,ID of the category tree this belongs to
+category_tree,views,INT64,Number of times the category has been viewed
+channel,date_created,TIMESTAMP,Timestamp when the sales channel was created
+channel,date_modified,TIMESTAMP,Timestamp when the sales channel was last modified
+channel,external_id,STRING,External identifier for the channel integration
+channel,id,INT64,Unique identifier for the sales channel
+channel,is_enabled,BOOL,Whether the sales channel is currently active
+channel,is_listable_from_ui,BOOL,Whether the channel appears in the admin UI
+channel,is_visible,BOOL,Whether the channel is visible to customers
+channel,name,STRING,Name of the sales channel
+channel,platform,STRING,Platform type of the sales channel
+channel,status,STRING,Current status of the sales channel
+channel,type,STRING,Type of sales channel (e.g. storefront marketplace)
+channel_listing,channel_id,INT64,Sales channel ID for this listing
+channel_listing,date_created,TIMESTAMP,When the channel listing was created
+channel_listing,date_modified,TIMESTAMP,When the channel listing was last updated
+channel_listing,description,STRING,Product description for this channel listing
+channel_listing,external_id,STRING,External ID for the listing on the channel
+channel_listing,listing_id,INT64,Unique identifier for the listing
+channel_listing,name,STRING,Product name on this channel listing
+channel_listing,product_id,INT64,Product ID this listing refers to
+channel_listing,state,STRING,Current state of the channel listing
+country,country,STRING,Full country name
+country,country_iso_2,STRING,Two-letter ISO country code
+country,country_iso_3,STRING,Three-letter ISO country code
+country,id,INT64,Unique identifier for the country
+country_state,country_id,INT64,Country this state belongs to
+country_state,id,INT64,Unique identifier for the state
+country_state,state,STRING,Full state or province name
+country_state,state_abbreviation,STRING,Abbreviated state or province code
+coupon,amount,STRING,Coupon discount amount or percentage value
+coupon,code,STRING,Coupon code entered by the customer
+coupon,date_created,TIMESTAMP,When the coupon was created
+coupon,enabled,BOOL,Whether the coupon is currently active
+coupon,expires,STRING,Expiration date for the coupon
+coupon,id,INT64,Unique identifier for the coupon
+coupon,max_uses,INT64,Maximum total number of times coupon can be used
+coupon,max_uses_per_customer,INT64,Maximum times a single customer can use the coupon
+coupon,min_purchase,STRING,Minimum purchase amount required to use the coupon
+coupon,name,STRING,Internal name for the coupon promotion
+coupon,num_uses,INT64,Number of times the coupon has been redeemed
+coupon,type,STRING,Type of coupon discount (percentage fixed amount free shipping)
+currency,auto_update,BOOL,Whether exchange rates update automatically
+currency,country_iso_2,STRING,Country code associated with this currency
+currency,currency_code,STRING,ISO currency code (e.g. USD EUR GBP)
+currency,currency_exchange_rate,FLOAT64,Exchange rate relative to the default currency
+currency,decimal_places,INT64,Number of decimal places for display
+currency,enabled,BOOL,Whether this currency is enabled for transactions
+currency,id,INT64,Unique identifier for the currency
+currency,is_default,BOOL,Whether this is the store default currency
+currency,is_transactional,BOOL,Whether customers can pay in this currency
+currency,last_updated,TIMESTAMP,When the exchange rate was last updated
+currency,name,STRING,Display name of the currency
+customer,accepts_product_review_abandoned_cart_emails,BOOL,Whether customer opted in to marketing emails
+customer,address_count,INT64,Number of saved addresses for the customer
+customer,attribute_count,INT64,Number of custom attributes for the customer
+customer,company,STRING,Company name of the customer
+customer,customer_group_id,INT64,Customer group the customer belongs to
+customer,date_created,TIMESTAMP,When the customer account was created
+customer,date_modified,TIMESTAMP,When the customer account was last updated
+customer,email,STRING,Email address of the customer
+customer,first_name,STRING,First name of the customer
+customer,force_password_reset,BOOL,Whether customer must reset password on next login
+customer,id,INT64,Unique identifier for the customer
+customer,last_name,STRING,Last name of the customer
+customer,notes,STRING,Internal staff notes about the customer
+customer,origin_channel_id,INT64,Sales channel where the customer first registered
+customer,phone,STRING,Phone number of the customer
+customer,tax_exempt_category,STRING,Tax exemption category for the customer
+customer_address,address_1,STRING,Primary street address line
+customer_address,address_2,STRING,Secondary street address line (apt suite etc)
+customer_address,address_type,STRING,Type of address (residential commercial)
+customer_address,city,STRING,City of the customer address
+customer_address,company,STRING,Company name at the address
+customer_address,country,STRING,Country of the customer address
+customer_address,country_code,STRING,Country code of the address
+customer_address,customer_id,INT64,Customer who owns this address
+customer_address,first_name,STRING,First name for this address
+customer_address,id,STRING,Unique identifier for the address
+customer_address,last_name,STRING,Last name for this address
+customer_address,phone,STRING,Phone number for this address
+customer_address,postal_code,STRING,Postal or ZIP code
+customer_address,state_or_province,STRING,State or province of the address
+customer_group,id,INT64,Unique identifier for the customer group
+customer_group,is_default,BOOL,Whether this is the default customer group
+customer_group,is_group_for_guests,BOOL,Whether this group is for guest (non-registered) customers
+customer_group,name,STRING,Name of the customer group (e.g. wholesale VIP)
+gift_certificate,amount,FLOAT64,Original amount loaded on the gift certificate
+gift_certificate,balance,FLOAT64,Remaining balance on the gift certificate
+gift_certificate,code,STRING,Redemption code for the gift certificate
+gift_certificate,customer_id,INT64,Customer who received the gift certificate
+gift_certificate,expiry_date,TIMESTAMP,Expiration date of the gift certificate
+gift_certificate,from_email,STRING,Email of the person who purchased the gift certificate
+gift_certificate,from_name,STRING,Name of the person who sent the gift certificate
+gift_certificate,id,INT64,Unique identifier for the gift certificate
+gift_certificate,message,STRING,Personal message included with the gift certificate
+gift_certificate,order_id,INT64,Order in which the gift certificate was purchased
+gift_certificate,purchase_date,TIMESTAMP,Date the gift certificate was purchased
+gift_certificate,status,STRING,Current status of the gift certificate (active redeemed expired)
+gift_certificate,template,STRING,Display template used for the gift certificate
+gift_certificate,to_email,STRING,Email of the gift certificate recipient
+gift_certificate,to_name,STRING,Name of the gift certificate recipient
+order_coupon,amount,FLOAT64,Original coupon amount applied to the order
+order_coupon,code,STRING,Coupon code used on the order
+order_coupon,coupon_id,INT64,Reference to the coupon definition
+order_coupon,discount,FLOAT64,Actual discount amount applied from the coupon
+order_coupon,id,INT64,Unique identifier for the order coupon record
+order_coupon,order_id,INT64,Order where this coupon was applied
+order_coupon,type,INT64,Type of coupon discount applied
+order_product,base_cost_price,STRING,Base cost price of the product before adjustments
+order_product,base_price,STRING,Base selling price of the product
+order_product,base_total,STRING,Base total for this line item
+order_product,base_wrapping_cost,STRING,Base gift wrapping cost for this item
+order_product,bin_picking_number,STRING,Warehouse bin location for picking
+order_product,cost_price_ex_tax,FLOAT64,Cost price of the product excluding tax
+order_product,cost_price_inc_tax,FLOAT64,Cost price of the product including tax
+order_product,cost_price_tax,FLOAT64,Tax amount on the cost price
+order_product,event_date,TIMESTAMP,Date of event associated with this product
+order_product,event_name,STRING,Name of event associated with this product
+order_product,external_id,STRING,External system identifier for the line item
+order_product,fixed_shipping_cost,STRING,Fixed shipping cost for this product
+order_product,id,INT64,Unique identifier for the order line item
+order_product,is_bundled_product,BOOL,Whether this product is part of a bundle
+order_product,is_refunded,BOOL,Whether this line item has been refunded
+order_product,name,STRING,Product name as shown on the order
+order_product,name_customer,STRING,Customer-facing product name
+order_product,name_merchant,STRING,Merchant-facing product name
+order_product,option_set_id,INT64,Product option set applied
+order_product,order_address_id,INT64,Shipping address for this line item
+order_product,order_id,INT64,Order this product belongs to
+order_product,parent_order_product_id,INT64,Parent line item ID for bundled products
+order_product,price_ex_tax,FLOAT64,Selling price per unit excluding tax
+order_product,price_inc_tax,FLOAT64,Selling price per unit including tax
+order_product,price_tax,FLOAT64,Tax amount per unit
+order_product,product_id,INT64,Reference to the product catalog
+order_product,quantity,INT64,Number of units ordered
+order_product,quantity_shipped,INT64,Number of units that have been shipped
+order_product,refunded_amount,STRING,Amount refunded for this line item
+order_product,return_id,INT64,Return request ID if item was returned
+order_product,sku,STRING,Stock keeping unit code for the product
+order_product,total_ex_tax,FLOAT64,Total line item amount excluding tax (price * quantity)
+order_product,total_inc_tax,FLOAT64,Total line item amount including tax
+order_product,total_tax,FLOAT64,Total tax amount for this line item
+order_product,type,STRING,Product type (physical digital)
+order_product,upc,STRING,Universal product code barcode
+order_product,variant_id,INT64,Product variant purchased
+order_product,weight,STRING,Weight of the product
+order_product,wrapping_cost_ex_tax,FLOAT64,Gift wrapping cost excluding tax
+order_product,wrapping_cost_inc_tax,FLOAT64,Gift wrapping cost including tax
+order_product,wrapping_cost_tax,FLOAT64,Tax on gift wrapping
+order_product,wrapping_message,STRING,Gift wrapping message
+order_product,wrapping_name,STRING,Gift wrapping style name
+order_refund,created,TIMESTAMP,When the refund was issued
+order_refund,id,INT64,Unique identifier for the refund
+order_refund,order_id,INT64,Order that was refunded
+order_refund,reason,STRING,Reason for the refund
+order_refund,total_amount,FLOAT64,Total amount refunded to the customer
+order_refund,total_tax,INT64,Tax amount included in the refund
+order_refund,user_id,INT64,Staff user who processed the refund
+order_refund,uses_merchant_override_values,BOOL,Whether merchant override values were used
+order_shipment,city,STRING,Delivery city
+order_shipment,comments,STRING,Shipment notes or comments
+order_shipment,company,STRING,Company name at delivery address
+order_shipment,country,STRING,Delivery country
+order_shipment,country_iso_2,STRING,Delivery country ISO code
+order_shipment,customer_id,INT64,Customer receiving the shipment
+order_shipment,date_created,TIMESTAMP,When the shipment was created
+order_shipment,email,STRING,Contact email for the shipment
+order_shipment,first_name,STRING,Recipient first name
+order_shipment,id,INT64,Unique identifier for the shipment
+order_shipment,last_name,STRING,Recipient last name
+order_shipment,order_address_id,INT64,Shipping address used for this shipment
+order_shipment,order_id,INT64,Order this shipment belongs to
+order_shipment,phone,STRING,Contact phone for the shipment
+order_shipment,shipping_method,STRING,Shipping method used (e.g. standard express)
+order_shipment,shipping_provider,STRING,Shipping carrier provider name
+order_shipment,state,STRING,Delivery state or province
+order_shipment,street_1,STRING,Delivery street address line 1
+order_shipment,street_2,STRING,Delivery street address line 2
+order_shipment,tracking_carrier,STRING,Tracking carrier name
+order_shipment,tracking_link,STRING,URL link to track the shipment
+order_shipment,tracking_number,STRING,Shipment tracking number
+order_shipment,zip,STRING,Delivery postal or ZIP code
+order_shipping_address,base_cost,FLOAT64,Base shipping cost before adjustments
+order_shipping_address,base_handling_cost,FLOAT64,Base handling cost before adjustments
+order_shipping_address,city,STRING,City of the shipping address
+order_shipping_address,company,STRING,Company at the shipping address
+order_shipping_address,cost_ex_tax,FLOAT64,Shipping cost excluding tax
+order_shipping_address,cost_inc_tax,FLOAT64,Shipping cost including tax
+order_shipping_address,cost_tax,FLOAT64,Tax on shipping cost
+order_shipping_address,cost_tax_class_id,INT64,Tax class for shipping cost
+order_shipping_address,country,STRING,Country of the shipping address
+order_shipping_address,country_iso_2,STRING,Country ISO code for the shipping address
+order_shipping_address,email,STRING,Email at the shipping address
+order_shipping_address,first_name,STRING,First name at the shipping address
+order_shipping_address,handling_cost_ex_tax,FLOAT64,Handling cost excluding tax
+order_shipping_address,handling_cost_inc_tax,FLOAT64,Handling cost including tax
+order_shipping_address,handling_cost_tax,FLOAT64,Tax on handling cost
+order_shipping_address,handling_cost_tax_class_id,INT64,Tax class for handling cost
+order_shipping_address,id,INT64,Unique identifier for order shipping address
+order_shipping_address,items_shipped,INT64,Number of items shipped to this address
+order_shipping_address,items_total,INT64,Total number of items for this address
+order_shipping_address,last_name,STRING,Last name at the shipping address
+order_shipping_address,order_id,INT64,Order this shipping address belongs to
+order_shipping_address,phone,STRING,Phone number at the shipping address
+order_shipping_address,shipping_method,STRING,Shipping method for this address
+order_shipping_address,shipping_zone_id,INT64,Shipping zone for rate calculation
+order_shipping_address,shipping_zone_name,STRING,Name of the shipping zone
+order_shipping_address,state,STRING,State or province of the shipping address
+order_shipping_address,street_1,STRING,Street address line 1
+order_shipping_address,street_2,STRING,Street address line 2
+order_shipping_address,zip,STRING,ZIP or postal code of the shipping address
+order_status,custom_label,STRING,Custom display label for the order status
+order_status,id,INT64,Unique identifier for the order status
+order_status,name,STRING,System name of the order status
+order_status,order_id,INT64,Order this status record belongs to
+order_status,system_description,STRING,System description of the order status
+order_status,system_label,STRING,System label for the order status
+order_tax,class,STRING,Tax class name
+order_tax,id,INT64,Unique identifier for the order tax record
+order_tax,line_amount,FLOAT64,Tax amount for this line
+order_tax,line_item_type,STRING,Type of line item being taxed
+order_tax,name,STRING,Name of the tax (e.g. state tax GST VAT)
+order_tax,order_address_id,INT64,Address used for tax calculation
+order_tax,order_id,INT64,Order this tax applies to
+order_tax,order_product_id,INT64,Product line item this tax applies to
+order_tax,priority,INT64,Priority order for tax calculation
+order_tax,priority_amount,FLOAT64,Tax amount at this priority level
+order_tax,rate,FLOAT64,Tax rate percentage
+order_tax,tax_class_id,INT64,Tax class identifier
+order_tax,tax_rate_id,INT64,Tax rate identifier
+order_transaction,amount,FLOAT64,Transaction payment amount
+order_transaction,card_type,STRING,Credit card type used (Visa Mastercard etc)
+order_transaction,currency,STRING,Currency of the transaction
+order_transaction,custom_payment_method,STRING,Custom payment method name if applicable
+order_transaction,date_created,TIMESTAMP,When the payment transaction occurred
+order_transaction,display_name,STRING,Display name of the payment method
+order_transaction,event,STRING,Transaction event type (purchase refund authorization)
+order_transaction,gateway,STRING,Payment gateway used to process the transaction
+order_transaction,gift_certificate_code,STRING,Gift certificate code used in payment
+order_transaction,gift_certificate_original_balance,FLOAT64,Original balance of gift certificate used
+order_transaction,gift_certificate_remaining_balance,FLOAT64,Remaining balance after transaction
+order_transaction,gift_certificate_starting_balance,FLOAT64,Gift certificate balance before transaction
+order_transaction,gift_certificate_status,STRING,Status of the gift certificate used
+order_transaction,id,INT64,Unique identifier for the transaction
+order_transaction,method,STRING,Payment method category (credit_card manual etc)
+order_transaction,order_id,INT64,Order this transaction belongs to
+order_transaction,payment_method_id,STRING,Payment method identifier
+order_transaction,reference_transaction_id,INT64,Reference to related transaction (e.g. original for refund)
+order_transaction,status,STRING,Transaction status (ok error pending)
+order_transaction,store_credit_remaining_balance,FLOAT64,Remaining store credit after transaction
+orders,base_handling_cost,FLOAT64,Base handling cost for the order
+orders,base_shipping_cost,FLOAT64,Base shipping cost for the order
+orders,base_wrapping_cost,FLOAT64,Base gift wrapping cost for the order
+orders,cart_id,STRING,Shopping cart that became this order
+orders,channel_id,INT64,Sales channel where the order was placed
+orders,city,STRING,Billing city
+orders,company,STRING,Billing company name
+orders,country,STRING,Billing country
+orders,country_iso_2,STRING,Billing country ISO code
+orders,coupon_discount,FLOAT64,Total coupon discount applied to the order
+orders,currency_code,STRING,Currency code for the order
+orders,currency_exchange_rate,FLOAT64,Exchange rate at time of order
+orders,currency_id,INT64,Currency ID for the order
+orders,customer_id,INT64,Customer who placed the order
+orders,customer_locale,STRING,Locale of the customer when ordering
+orders,customer_message,STRING,Message from the customer on the order
+orders,date_created,TIMESTAMP,When the order was placed
+orders,date_modified,TIMESTAMP,When the order was last updated
+orders,date_shipped,TIMESTAMP,When the order was shipped
+orders,default_currency_code,STRING,Store default currency code
+orders,default_currency_id,INT64,Store default currency ID
+orders,discount_amount,FLOAT64,Total discount on the order
+orders,email,STRING,Customer email on the order
+orders,external_id,STRING,External system order ID
+orders,external_merchant_id,STRING,External merchant identifier
+orders,external_source,STRING,External source of the order
+orders,first_name,STRING,Customer first name on the order
+orders,geoip_country,STRING,Country detected by GeoIP
+orders,geoip_country_iso_2,STRING,GeoIP country ISO code
+orders,gift_certificate_amount,FLOAT64,Gift certificate amount applied to the order
+orders,handling_cost_ex_tax,FLOAT64,Handling cost excluding tax
+orders,handling_cost_inc_tax,FLOAT64,Handling cost including tax
+orders,handling_cost_tax,FLOAT64,Tax on handling cost
+orders,handling_cost_tax_class_id,INT64,Tax class for handling cost
+orders,id,INT64,Unique identifier for the order
+orders,is_deleted,BOOL,Whether the order has been deleted
+orders,is_email_opt_in,BOOL,Whether customer opted in to emails on this order
+orders,items_shipped,INT64,Number of items shipped in the order
+orders,items_total,INT64,Total number of items in the order
+orders,last_name,STRING,Customer last name on the order
+orders,order_is_digital,BOOL,Whether the order contains only digital products
+orders,order_source,STRING,Source of the order (web mobile API)
+orders,payment_method,STRING,Payment method used for the order
+orders,payment_provider_id,STRING,Payment provider identifier
+orders,payment_status,STRING,Payment status of the order (paid unpaid partially_paid)
+orders,phone,STRING,Customer phone number on the order
+orders,refunded_amount,FLOAT64,Total amount refunded on the order
+orders,shipping_address_count,INT64,Number of shipping addresses on the order
+orders,shipping_cost_ex_tax,FLOAT64,Shipping cost excluding tax
+orders,shipping_cost_inc_tax,FLOAT64,Shipping cost including tax
+orders,shipping_cost_tax,FLOAT64,Tax on shipping cost
+orders,shipping_cost_tax_class_id,INT64,Tax class for shipping cost
+orders,staff_notes,STRING,Internal staff notes about the order
+orders,state,STRING,Billing state or province
+orders,status,STRING,Current order status (Pending Shipped Completed etc)
+orders,status_id,INT64,Order status ID reference
+orders,store_credit_amount,FLOAT64,Store credit amount applied to the order
+orders,store_default_currency_code,STRING,Store default currency code at time of order
+orders,store_default_to_transactional_exchange_rate,STRING,Exchange rate from default to transactional currency
+orders,street_1,STRING,Billing street address line 1
+orders,street_2,STRING,Billing street address line 2
+orders,subtotal_ex_tax,FLOAT64,Order subtotal excluding tax (sum of line items)
+orders,subtotal_inc_tax,FLOAT64,Order subtotal including tax
+orders,subtotal_tax,FLOAT64,Tax on order subtotal
+orders,tax_provider_id,STRING,Tax calculation provider ID
+orders,total_ex_tax,FLOAT64,Total order amount excluding tax
+orders,total_inc_tax,FLOAT64,Total order amount including tax (revenue)
+orders,wrapping_cost_ex_tax,FLOAT64,Gift wrapping cost excluding tax
+orders,wrapping_cost_inc_tax,FLOAT64,Gift wrapping cost including tax
+orders,wrapping_cost_tax,FLOAT64,Tax on gift wrapping cost
+orders,wrapping_cost_tax_class_id,INT64,Tax class for wrapping cost
+orders,zip,STRING,Billing ZIP or postal code
+price_list,active,BOOL,Whether the price list is currently active
+price_list,date_created,TIMESTAMP,When the price list was created
+price_list,date_modified,TIMESTAMP,When the price list was last modified
+price_list,id,INT64,Unique identifier for the price list
+price_list,name,STRING,Name of the price list (e.g. wholesale VIP)
+price_list_assignment,channel_id,INT64,Sales channel this price list is assigned to
+price_list_assignment,customer_group_id,INT64,Customer group that sees these prices
+price_list_assignment,id,INT64,Unique identifier for the assignment
+price_list_assignment,price_list_id,INT64,Price list being assigned
+price_list_record,calculated_price,FLOAT64,Final calculated price after rules
+price_list_record,currency,STRING,Currency for this price record
+price_list_record,date_created,TIMESTAMP,When the price record was created
+price_list_record,date_modified,TIMESTAMP,When the price record was last updated
+price_list_record,map_price,FLOAT64,Minimum advertised price
+price_list_record,price,FLOAT64,List price in the price list
+price_list_record,price_list_id,INT64,Price list this record belongs to
+price_list_record,product_id,INT64,Product this price applies to
+price_list_record,retail_price,FLOAT64,Retail/MSRP price
+price_list_record,sale_price,FLOAT64,Sale price if on promotion
+price_list_record,sku,STRING,SKU this price applies to
+price_list_record,variant_id,INT64,Product variant this price applies to
+product,availability,STRING,Product availability status
+product,availability_description,STRING,Custom availability description text
+product,base_variant_id,INT64,Base variant for this product
+product,bin_picking_number,STRING,Warehouse bin location
+product,brand_id,INT64,Brand this product belongs to
+product,brand_name,STRING,Display name of the product brand
+product,calculated_price,FLOAT64,Final calculated selling price
+product,condition,STRING,Product condition (new used refurbished)
+product,cost_price,FLOAT64,Wholesale cost price of the product
+product,custom_url,STRING,Custom URL path for the product page
+product,custom_url_is_customized,BOOL,Whether the product URL was manually set
+product,date_created,TIMESTAMP,When the product was added to the catalog
+product,date_modified,TIMESTAMP,When the product was last updated
+product,depth,FLOAT64,Product depth dimension
+product,description,STRING,Full product description HTML
+product,fixed_cost_shipping_price,FLOAT64,Fixed shipping cost for the product
+product,gift_wrapping_options_type,STRING,Gift wrapping availability setting
+product,gtin,STRING,Global Trade Item Number
+product,height,FLOAT64,Product height dimension
+product,id,INT64,Unique identifier for the product
+product,inventory_level,INT64,Current inventory stock quantity
+product,inventory_tracking,STRING,Inventory tracking method (none product variant)
+product,inventory_warning_level,INT64,Low stock warning threshold
+product,is_condition_shown,BOOL,Whether product condition is displayed
+product,is_featured,BOOL,Whether the product is marked as featured
+product,is_free_shipping,BOOL,Whether the product has free shipping
+product,is_preorder_hidden,BOOL,Whether preorder notice is hidden
+product,is_preorder_only,BOOL,Whether the product is only available for preorder
+product,is_price_hidden,BOOL,Whether the price is hidden on storefront
+product,is_visible,BOOL,Whether the product is visible on the storefront
+product,map_price,FLOAT64,Minimum advertised price
+product,meta_description,STRING,SEO meta description for the product
+product,mpn,STRING,Manufacturer part number
+product,name,STRING,Display name of the product
+product,option_set_display,STRING,How product options are displayed
+product,option_set_id,INT64,Product option set ID
+product,order_quantity_maximum,INT64,Maximum quantity per order
+product,order_quantity_minimum,INT64,Minimum quantity per order
+product,page_title,STRING,SEO page title for the product
+product,preorder_message,STRING,Preorder availability message
+product,preorder_release_date,STRING,Expected release date for preorder products
+product,price,FLOAT64,Base selling price of the product
+product,price_hidden_label,STRING,Label shown when price is hidden
+product,product_tax_code,STRING,Tax code for the product
+product,retail_price,FLOAT64,Retail/MSRP price of the product
+product,reviews_count,INT64,Number of customer reviews
+product,reviews_rating_sum,FLOAT64,Sum of all review ratings
+product,sale_price,FLOAT64,Promotional sale price
+product,search_keywords,STRING,Search keywords for the product
+product,sku,STRING,Stock keeping unit code
+product,sort_order,INT64,Display sort order
+product,tax_class_id,INT64,Tax class for the product
+product,total_sold,INT64,Total number of units sold
+product,type,STRING,Product type (physical digital)
+product,upc,STRING,Universal Product Code barcode
+product,view_count,INT64,Number of times the product page was viewed
+product,warranty,STRING,Product warranty information
+product,weight,FLOAT64,Product weight
+product,width,FLOAT64,Product width dimension
+product_category,category_id,INT64,Category the product is assigned to
+product_category,product_id,INT64,Product assigned to the category
+product_custom_field,id,INT64,Unique identifier for the custom field
+product_custom_field,name,STRING,Name of the custom field
+product_custom_field,product_id,INT64,Product this custom field belongs to
+product_custom_field,value,STRING,Value of the custom field
+product_image,date_created,TIMESTAMP,When the image was uploaded
+product_image,description,STRING,Alt text or description of the image
+product_image,id,INT64,Unique identifier for the image
+product_image,is_thumbnail,BOOL,Whether this is the main thumbnail image
+product_image,product_id,INT64,Product this image belongs to
+product_image,sort_order,INT64,Display sort order of the image
+product_review,date_created,TIMESTAMP,When the review was submitted
+product_review,date_modified,TIMESTAMP,When the review was last updated
+product_review,date_reviewed,TIMESTAMP,When the review was approved or processed
+product_review,email,STRING,Reviewer email address
+product_review,id,INT64,Unique identifier for the review
+product_review,name,STRING,Reviewer display name
+product_review,product_id,INT64,Product being reviewed
+product_review,rating,INT64,Rating score given by the reviewer (1-5)
+product_review,status,STRING,Review approval status (approved pending rejected)
+product_review,text,STRING,Full text of the review
+product_review,title,STRING,Title of the review
+product_variant,bin_picking_number,STRING,Warehouse bin location for this variant
+product_variant,calculated_price,FLOAT64,Final calculated price for the variant
+product_variant,calculated_weight,INT64,Calculated weight for the variant
+product_variant,cost_price,FLOAT64,Wholesale cost price of the variant
+product_variant,depth,FLOAT64,Variant depth dimension
+product_variant,fixed_cost_shipping_price,FLOAT64,Fixed shipping cost for the variant
+product_variant,height,FLOAT64,Variant height dimension
+product_variant,id,INT64,Unique identifier for the product variant
+product_variant,inventory_level,INT64,Current stock level for the variant
+product_variant,inventory_warning_level,INT64,Low stock warning threshold for the variant
+product_variant,is_free_shipping,BOOL,Whether this variant has free shipping
+product_variant,mpn,STRING,Manufacturer part number for the variant
+product_variant,price,FLOAT64,Selling price of the variant
+product_variant,product_id,INT64,Product this variant belongs to
+product_variant,purchasing_disabled,BOOL,Whether purchasing is disabled for this variant
+product_variant,purchasing_disabled_message,STRING,Message shown when purchasing is disabled
+product_variant,retail_price,FLOAT64,Retail/MSRP price of the variant
+product_variant,sale_price,INT64,Sale price of the variant
+product_variant,sku,STRING,SKU code for the variant
+product_variant,sku_id,INT64,SKU ID for the variant
+product_variant,upc,STRING,UPC barcode for the variant
+product_variant,weight,FLOAT64,Weight of the variant
+product_variant,width,FLOAT64,Width of the variant
+shipping_zone,enabled,BOOL,Whether the shipping zone is active
+shipping_zone,free_shipping_enabled,BOOL,Whether free shipping is available in this zone
+shipping_zone,free_shipping_exclude_fixed_shipping_products,BOOL,Whether fixed shipping products are excluded from free shipping
+shipping_zone,free_shipping_minimum_sub_total,FLOAT64,Minimum order subtotal for free shipping
+shipping_zone,handling_fees_display_separately,BOOL,Whether handling fees are shown separately
+shipping_zone,handling_fees_fixed_surcharge,FLOAT64,Fixed handling fee surcharge amount
+shipping_zone,handling_fees_percentage_surcharge,FLOAT64,Percentage handling fee surcharge
+shipping_zone,id,INT64,Unique identifier for the shipping zone
+shipping_zone,name,STRING,Name of the shipping zone (e.g. Domestic International)
+shipping_zone,type,STRING,Type of shipping zone
+shipping_zone_location,country_iso_2,STRING,Country code for this shipping zone location
+shipping_zone_location,id,INT64,Unique identifier for the zone location
+shipping_zone_location,shipping_zone_id,INT64,Shipping zone this location belongs to
+shipping_zone_location,state_iso_2,STRING,State code for this shipping zone location
+shipping_zone_location,zip,STRING,ZIP code for this shipping zone location
+shipping_zone_method,enabled,BOOL,Whether this shipping method is active
+shipping_zone_method,fixed_surcharge,INT64,Fixed surcharge for this shipping method
+shipping_zone_method,id,INT64,Unique identifier for the shipping method
+shipping_zone_method,is_fallback,BOOL,Whether this is the fallback shipping method
+shipping_zone_method,name,STRING,Name of the shipping method (e.g. flat rate weight-based)
+shipping_zone_method,settings,JSON,Configuration settings for the shipping method
+shipping_zone_method,shipping_zone_id,INT64,Shipping zone this method belongs to
+shipping_zone_method,type,STRING,Type of shipping calculation method
+store,address,STRING,Physical store address
+store,admin_email,STRING,Admin contact email for the store
+store,checkout_type,STRING,Checkout type setting
+store,country,STRING,Country where the store is based
+store,currency,STRING,Store default currency
+store,currency_symbol,STRING,Currency symbol displayed (e.g. $ EUR)
+store,currency_symbol_location,STRING,Where currency symbol is placed (left right)
+store,decimal_places,INT64,Number of decimal places for prices
+store,decimal_separator,STRING,Decimal separator character
+store,default_channel_id,INT64,Default sales channel ID
+store,default_site_id,INT64,Default site ID
+store,dimension_decimal_places,INT64,Decimal places for dimensions
+store,dimension_units,STRING,Units for product dimensions (cm inches)
+store,domain,STRING,Store domain name URL
+store,facebook_catalog_id,STRING,Facebook catalog integration ID
+store,first_name,STRING,Store owner first name
+store,graphql_storefront_api_enabled,BOOL,Whether GraphQL API is enabled
+store,id,STRING,Unique identifier for the store
+store,industry,STRING,Industry category of the store
+store,is_price_entered_with_tax,BOOL,Whether prices are entered tax-inclusive
+store,languages,STRING,Supported languages
+store,last_name,STRING,Store owner last name
+store,multi_storefront_enabled,BOOL,Whether multi-storefront is enabled
+store,name,STRING,Name of the store
+store,order_email,STRING,Email for order notifications
+store,phone,STRING,Store phone number
+store,plan_is_trial,BOOL,Whether the store is on a trial plan
+store,plan_level,STRING,Subscription plan level
+store,plan_name,STRING,Name of the subscription plan
+store,shopper_consent_tracking_enabled,BOOL,Whether shopper consent tracking is active
+store,sitewidehttps_enabled,BOOL,Whether HTTPS is enabled site-wide
+store,status,STRING,Current store status
+store,stencil_enabled,BOOL,Whether Stencil theme engine is enabled
+store,store_id,INT64,Numeric store ID
+store,thousands_separator,STRING,Thousands separator character for prices
+store,timezone_display,STRING,Display timezone for the store
+store,timezone_dst_correction,BOOL,Whether DST correction is applied
+store,timezone_dst_offset,INT64,DST offset in seconds
+store,timezone_export,STRING,Timezone for data exports
+store,timezone_extended_display,STRING,Extended timezone display string
+store,timezone_name,STRING,Timezone name (e.g. America/New_York)
+store,timezone_raw_offset,INT64,Raw timezone offset in seconds
+store,weight_units,STRING,Units for product weight (kg lbs oz)
+store,wishlists_enabled,BOOL,Whether wishlists feature is enabled
+subscriber,channel_id,INT64,Channel the subscriber signed up from
+subscriber,date_created,TIMESTAMP,When the subscriber signed up
+subscriber,date_modified,TIMESTAMP,When the subscriber was last updated
+subscriber,email,STRING,Subscriber email address
+subscriber,first_name,STRING,Subscriber first name
+subscriber,id,INT64,Unique identifier for the subscriber
+subscriber,last_name,STRING,Subscriber last name
+subscriber,order_id,INT64,Order associated with the subscription
+subscriber,source,STRING,Source of the subscription (checkout popup etc)
+tax_class,date_created,TIMESTAMP,When the tax class was created
+tax_class,date_modified,TIMESTAMP,When the tax class was last updated
+tax_class,id,STRING,Unique identifier for the tax class
+tax_class,name,STRING,Name of the tax class (e.g. taxable non-taxable)
+wishlist,customer_id,INT64,Customer who owns the wishlist
+wishlist,id,INT64,Unique identifier for the wishlist
+wishlist,is_public,BOOL,Whether the wishlist is publicly visible
+wishlist,name,STRING,Name of the wishlist
+wishlist_item,id,INT64,Unique identifier for the wishlist item
+wishlist_item,product_id,INT64,Product on the wishlist
+wishlist_item,variant_id,INT64,Product variant on the wishlist
+wishlist_item,wishlist_id,INT64,Wishlist this item belongs to
