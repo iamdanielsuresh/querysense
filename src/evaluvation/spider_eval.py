@@ -4,16 +4,16 @@ Spider 1.0 Evaluation Runner — Architecture-Parity Edition
 This evaluator executes the SAME logical pipeline as the runtime system
 (pipeline.py), ensuring benchmark numbers reflect production behaviour.
 
-Runtime path:   retrieval → decomposition → generation → execution → retry
-Evaluation path: retrieval → decomposition → generation → execution → retry
+Runtime path:   retrieval → orchestrator (planner/fallback) → generation → execution → retry
+Evaluation path: retrieval → orchestrator (planner/fallback) → generation → execution → retry
                  (each step toggleable via ablation modes)
 
 Ablation modes:
   baseline         Full schema → generate_sql
   +retrieval       SchemaRetriever → generate_sql
-  +decomposition   Full schema → QueryDecomposer → generate_sql
+  +decomposition   Full schema → PlannerExecutorOrchestrator → generate_sql
   +retry           Full schema → generate_sql → retry on exec failure
-  full             SchemaRetriever → QueryDecomposer → generate_sql + retry
+  full             SchemaRetriever → PlannerExecutorOrchestrator → generate_sql + retry
 
 Result comparison uses multiset (bag) semantics to avoid false
 positives/negatives from duplicate-row or ordering differences.
@@ -51,6 +51,7 @@ from src.generator.prompt_registry import (
     get_registered_version,
 )
 from src.decomposition.query_decomposer import QueryDecomposer
+from src.decomposition.orchestrator import PlannerExecutorOrchestrator
 from src.retriever.schema_retriever import SchemaRetriever
 
 # ---------------------------------------------------------------------------
@@ -251,7 +252,7 @@ def evaluate_single(
     db_path: Path,
     *,
     retriever_cache: Optional[RetrieverCache],
-    decomposer: Optional[QueryDecomposer],
+    orchestrator: Optional[PlannerExecutorOrchestrator],
     mode_config: Dict,
     verbose: bool = False,
 ) -> Dict:
@@ -260,11 +261,11 @@ def evaluate_single(
 
     The pipeline mirrors ``pipeline.py``::
 
-        1. Retrieval   (SchemaRetriever.retrieve)   — if enabled
-        2. Decomposition (QueryDecomposer.process)  — if enabled
-        3. Generation  (generate_sql)
-        4. Execution   (SQLite)
-        5. Retry       (error-guided re-generation) — if enabled
+        1. Retrieval          (SchemaRetriever.retrieve)               — if enabled
+        2. Planning/Decomp    (PlannerExecutorOrchestrator.process)    — if enabled
+        3. Generation         (generate_sql — called inside orchestrator or directly)
+        4. Execution          (SQLite)
+        5. Retry              (error-guided re-generation)             — if enabled
     """
     question = example["question"]
     gold_sql = example["query"]
@@ -284,6 +285,9 @@ def evaluate_single(
         "complexity": None,
         "complexity_score": None,
         "retrieval_count": len(schema["columns"]),
+        "used_planner": False,
+        "failure_stage": None,
+        "failure_detail": None,
     }
 
     use_retrieval = mode_config["retrieval"]
@@ -299,30 +303,41 @@ def evaluate_single(
     else:
         schema_items = schema["columns"]
 
-    # ── Step 2: Decomposition (same as pipeline.py Step 5) ──
-    gen_question = question
-    if use_decomposition and decomposer is not None:
+    # ── Step 2+3: Orchestrator (planner/fallback) + Generation ──
+    # Mirrors pipeline.py Step 5: PlannerExecutorOrchestrator.process()
+    if use_decomposition and orchestrator is not None:
         try:
-            decomp = decomposer.process(question, schema_items, dialect="sqlite")
-            gen_question = decomp["enhanced_question"]
-            result["complexity"] = decomp["complexity"]
-            result["complexity_score"] = decomp["complexity_score"]
+            orch_result = orchestrator.process(
+                question, schema_items, generate_sql_fn=generate_sql,
+            )
+            pred_sql = orch_result.get("sql", "")
+            result["pred_sql"] = pred_sql if pred_sql else None
+            result["complexity"] = orch_result.get("complexity")
+            result["complexity_score"] = orch_result.get("complexity_score")
+            result["used_planner"] = orch_result.get("used_planner", False)
+            result["failure_stage"] = orch_result.get("failure_stage")
+            result["failure_detail"] = orch_result.get("failure_detail")
+            if not pred_sql:
+                result["error"] = "Orchestrator produced empty SQL"
+                result["failure_category"] = FailureCategory.GENERATION_ERROR
+                return result
         except Exception as e:
-            result["error"] = f"Decomposition error: {e}"
-            gen_question = question
-
-    # ── Step 3: SQL generation (same as pipeline.py Step 6) ──
-    try:
-        pred_sql = generate_sql(
-            question=gen_question,
-            schema_items=schema_items,
-            dialect="sqlite",
-        )
-        result["pred_sql"] = pred_sql
-    except Exception as e:
-        result["error"] = f"Generation error: {e}"
-        result["failure_category"] = FailureCategory.GENERATION_ERROR
-        return result
+            result["error"] = f"Orchestrator error: {e}"
+            result["failure_category"] = FailureCategory.GENERATION_ERROR
+            return result
+    else:
+        # ── Direct generation (no decomposition/planning) ──
+        try:
+            pred_sql = generate_sql(
+                question=question,
+                schema_items=schema_items,
+                dialect="sqlite",
+            )
+            result["pred_sql"] = pred_sql
+        except Exception as e:
+            result["error"] = f"Generation error: {e}"
+            result["failure_category"] = FailureCategory.GENERATION_ERROR
+            return result
 
     # ── Step 4: Execute gold SQL ──
     gold_success, gold_result = execute_sql_sqlite(db_path, gold_sql)
@@ -414,6 +429,20 @@ def compute_metrics(results: List[Dict], mode_name: str) -> Dict:
         if r["execution_match"]:
             cx_results[cx]["correct"] += 1
 
+    # Planner / fallback stats
+    planner_used = sum(1 for r in results if r.get("used_planner"))
+    orchestrator_invoked = sum(
+        1 for r in results if r.get("complexity") is not None
+    )
+    planner_fallback = orchestrator_invoked - planner_used
+
+    # Failure-stage breakdown (planning vs compilation vs fallback_generation)
+    stage_counts = Counter(
+        r["failure_stage"]
+        for r in results
+        if r.get("failure_stage")
+    )
+
     prompt_versions = get_active_versions()
     exec_err_count = failure_counts.get(FailureCategory.EXECUTION_ERROR, 0)
 
@@ -428,6 +457,16 @@ def compute_metrics(results: List[Dict], mode_name: str) -> Dict:
         "execution_errors": exec_err_count,
         "execution_error_rate_pct": round(exec_err_count / total * 100, 2),
         "retried_count": retried,
+        "planner_usage_count": planner_used,
+        "planner_usage_rate_pct": round(
+            planner_used / total * 100, 2
+        ) if total else 0,
+        "fallback_count": planner_fallback,
+        "fallback_rate_pct": round(
+            planner_fallback / total * 100, 2
+        ) if total else 0,
+        "orchestrator_invoked_count": orchestrator_invoked,
+        "failure_stage_counts": dict(stage_counts),
         "failure_categories": dict(failure_counts),
         "per_database": {
             db_id: {
@@ -480,13 +519,17 @@ def generate_report(all_metrics: Dict[str, Dict], output_dir: Path) -> Path:
         "|------|------------------------|-------------------------------|",
         "| Schema loading | `schema_loader.load_schema()` | `load_spider_tables()` (same dict format) |",
         "| Retrieval | `SchemaRetriever.retrieve()` | `SchemaRetriever.retrieve()` (same class) |",
-        "| Decomposition | `QueryDecomposer.process()` | `QueryDecomposer.process()` (same class) |",
-        "| Generation | `generate_sql()` | `generate_sql()` (same function) |",
+        "| Planning / Decomposition | `PlannerExecutorOrchestrator.process()` | `PlannerExecutorOrchestrator.process()` (same class) |",
+        "| Generation | `generate_sql()` (called inside orchestrator or directly) | `generate_sql()` (called inside orchestrator or directly) |",
         "| Execution | `bq_executor.execute_sql()` | `execute_sql_sqlite()` (dialect differs) |",
         "| Retry | Error-guided re-generation | Error-guided re-generation (same logic) |",
         "",
-        "> The retrieval, decomposition, generation, and retry code paths",
-        "> are identical between evaluation and runtime.",
+        "> The retrieval, planning/decomposition, generation, and retry code paths",
+        "> are identical between evaluation and runtime.  Both use",
+        "> `PlannerExecutorOrchestrator` which routes complex queries through",
+        "> the structured planner and falls back to `QueryDecomposer` when the",
+        "> plan is not viable.  The planner usage rate and fallback rate are",
+        "> reported below so that the mix is transparent.",
         "",
         "---",
         "",
@@ -504,8 +547,8 @@ def generate_report(all_metrics: Dict[str, Dict], output_dir: Path) -> Path:
         "",
         "## 3. Ablation Results",
         "",
-        "| Mode | EX (%) | Valid SQL (%) | Exec Err (%) | Gen Errors | Retries |",
-        "|------|--------|---------------|--------------|------------|---------|",
+        "| Mode | EX (%) | Valid SQL (%) | Exec Err (%) | Gen Errors | Retries | Planner % | Fallback % |",
+        "|------|--------|---------------|--------------|------------|---------|-----------|------------|",
     ]
     for mode, m in all_metrics.items():
         lines.append(
@@ -514,7 +557,27 @@ def generate_report(all_metrics: Dict[str, Dict], output_dir: Path) -> Path:
             f"| {m['valid_sql_rate_pct']} "
             f"| {m['execution_error_rate_pct']} "
             f"| {m['generation_errors']} "
-            f"| {m.get('retried_count', 0)} |"
+            f"| {m.get('retried_count', 0)} "
+            f"| {m.get('planner_usage_rate_pct', 0)} "
+            f"| {m.get('fallback_rate_pct', 0)} |"
+        )
+    lines.append("")
+
+    # Planner / fallback summary
+    lines += [
+        "### Planner vs Fallback Summary",
+        "",
+        "| Mode | Orchestrator Invoked | Planner Used | Fallback Used | Planner % | Fallback % |",
+        "|------|---------------------|-------------|--------------|-----------|------------|",
+    ]
+    for mode, m in all_metrics.items():
+        lines.append(
+            f"| {mode} "
+            f"| {m.get('orchestrator_invoked_count', 0)} "
+            f"| {m.get('planner_usage_count', 0)} "
+            f"| {m.get('fallback_count', 0)} "
+            f"| {m.get('planner_usage_rate_pct', 0)} "
+            f"| {m.get('fallback_rate_pct', 0)} |"
         )
     lines.append("")
 
@@ -607,7 +670,7 @@ def run_evaluation(
     prompt_versions = get_active_versions()
     print(f"\n  Prompt Version : SQLite={prompt_versions['sqlite']}, BigQuery={prompt_versions['bigquery']}")
     print(f"  Retrieval      : {'ON' if mode_config['retrieval'] else 'OFF'}")
-    print(f"  Decomposition  : {'ON' if mode_config['decomposition'] else 'OFF'}")
+    print(f"  Decomposition  : {'ON (PlannerExecutorOrchestrator)' if mode_config['decomposition'] else 'OFF'}")
     print(f"  Retry          : {'ON' if mode_config['retry'] else 'OFF'}")
 
     # ── Load data ──
@@ -623,10 +686,14 @@ def run_evaluation(
     # ── Init pipeline components ──
     print("[2/5] Initialising pipeline components...")
     retriever_cache = RetrieverCache() if mode_config["retrieval"] else None
-    decomposer = None
+    orchestrator = None
     if mode_config["decomposition"]:
-        decomposer = QueryDecomposer(cot_enabled=True, decompose_enabled=True)
-        print("      QueryDecomposer ready")
+        orchestrator = PlannerExecutorOrchestrator(
+            dialect="sqlite",
+            enable_planner=True,
+            planner_confidence_threshold=0.6,
+        )
+        print("      PlannerExecutorOrchestrator ready (planner enabled)")
     if retriever_cache:
         print("      SchemaRetriever cache ready (lazy per db)")
 
@@ -649,7 +716,7 @@ def run_evaluation(
             schema,
             db_path,
             retriever_cache=retriever_cache,
-            decomposer=decomposer,
+            orchestrator=orchestrator,
             mode_config=mode_config,
             verbose=verbose,
         )
@@ -679,6 +746,7 @@ def run_evaluation(
             "gold_success", "pred_success", "execution_match",
             "failure_category", "error", "error_class", "retried",
             "complexity", "complexity_score", "retrieval_count",
+            "used_planner", "failure_stage", "failure_detail",
         ]
         with open(csv_path, "w", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
@@ -732,6 +800,12 @@ def run_evaluation(
     print(f"  Generation Errors:    {metrics['generation_errors']}")
     if metrics.get("retried_count"):
         print(f"  Retried:              {metrics['retried_count']}")
+    if metrics.get("orchestrator_invoked_count"):
+        print(f"  Orchestrator Invoked: {metrics['orchestrator_invoked_count']}")
+        print(f"  Planner Used:         {metrics['planner_usage_count']}  "
+              f"({metrics['planner_usage_rate_pct']}%)")
+        print(f"  Fallback Used:        {metrics['fallback_count']}  "
+              f"({metrics['fallback_rate_pct']}%)")
 
     fc = metrics.get("failure_categories", {})
     if fc:
@@ -755,9 +829,9 @@ def main():
 Ablation modes
   baseline         Full schema -> generate_sql
   +retrieval       SchemaRetriever -> generate_sql
-  +decomposition   Full schema -> QueryDecomposer -> generate_sql
+  +decomposition   Full schema -> PlannerExecutorOrchestrator -> generate_sql
   +retry           Full schema -> generate_sql -> retry on failure
-  full             SchemaRetriever -> QueryDecomposer -> generate_sql + retry
+  full             SchemaRetriever -> PlannerExecutorOrchestrator -> generate_sql + retry
   all              Run ALL modes and produce comparison report
 
 Prompt A/B testing
