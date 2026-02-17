@@ -271,6 +271,335 @@ class TestPlanValidation:
 
 
 # =====================================================================
+# Strict schema-aware validation
+# =====================================================================
+
+class TestColumnExistenceValidation:
+    """Validation class 1: referenced columns must exist in referenced tables."""
+
+    def test_valid_columns_pass(self):
+        plan = QueryPlan(
+            "q", "simple", 0.1, 0.9,
+            steps=[
+                PlanStep(1, "scan orders", StepType.SCAN,
+                         tables=["orders"],
+                         columns=["id", "total_inc_tax"]),
+            ],
+            tables_needed=["orders"],
+        )
+        validated = validate_plan(plan, SAMPLE_SCHEMA)
+        assert validated.status == PlanStatus.VALIDATED
+
+    def test_qualified_column_valid(self):
+        plan = QueryPlan(
+            "q", "simple", 0.1, 0.9,
+            steps=[
+                PlanStep(1, "scan orders", StepType.SCAN,
+                         tables=["orders"],
+                         columns=["orders.id"]),
+            ],
+        )
+        validated = validate_plan(plan, SAMPLE_SCHEMA)
+        assert validated.status == PlanStatus.VALIDATED
+
+    def test_unknown_column_rejected(self):
+        plan = QueryPlan(
+            "q", "simple", 0.1, 0.9,
+            steps=[
+                PlanStep(1, "scan orders", StepType.SCAN,
+                         tables=["orders"],
+                         columns=["id", "nonexistent_col"]),
+            ],
+        )
+        validated = validate_plan(plan, SAMPLE_SCHEMA)
+        assert validated.status == PlanStatus.FAILED
+        assert any("nonexistent_col" in e and "not found" in e
+                    for e in validated.validation_errors)
+
+    def test_column_from_wrong_table_rejected(self):
+        """Column exists in schema but not in the step's tables."""
+        plan = QueryPlan(
+            "q", "simple", 0.1, 0.9,
+            steps=[
+                PlanStep(1, "scan orders", StepType.SCAN,
+                         tables=["orders"],
+                         columns=["email"]),  # email belongs to customer, not orders
+            ],
+        )
+        validated = validate_plan(plan, SAMPLE_SCHEMA)
+        assert validated.status == PlanStatus.FAILED
+        assert any("email" in e and "not found" in e
+                    for e in validated.validation_errors)
+
+    def test_qualified_column_wrong_table_rejected(self):
+        plan = QueryPlan(
+            "q", "simple", 0.1, 0.9,
+            steps=[
+                PlanStep(1, "scan orders", StepType.SCAN,
+                         tables=["orders"],
+                         columns=["customer.email"]),  # customer not in step.tables
+            ],
+        )
+        validated = validate_plan(plan, SAMPLE_SCHEMA)
+        assert validated.status == PlanStatus.FAILED
+        assert any("customer.email" in e for e in validated.validation_errors)
+
+    def test_column_resolved_via_join_table(self):
+        """A column from a join's right_table should resolve even if not in step.tables."""
+        plan = QueryPlan(
+            "q", "complex", 0.5, 0.9,
+            steps=[
+                PlanStep(1, "join", StepType.JOIN,
+                         tables=["orders"],
+                         columns=["quantity"],  # from order_product via join
+                         joins=[JoinSpec("orders", "order_product", "id", "order_id")]),
+            ],
+        )
+        validated = validate_plan(plan, SAMPLE_SCHEMA)
+        assert validated.status == PlanStatus.VALIDATED
+
+
+class TestJoinKeyValidation:
+    """Validation class 2: join columns must exist on their respective sides."""
+
+    def test_valid_join_keys_pass(self):
+        plan = QueryPlan(
+            "q", "complex", 0.5, 0.9,
+            steps=[
+                PlanStep(1, "join", StepType.JOIN,
+                         tables=["orders", "order_product"],
+                         joins=[JoinSpec("orders", "order_product", "id", "order_id")]),
+            ],
+        )
+        validated = validate_plan(plan, SAMPLE_SCHEMA)
+        assert validated.status == PlanStatus.VALIDATED
+
+    def test_left_join_key_missing(self):
+        plan = QueryPlan(
+            "q", "complex", 0.5, 0.9,
+            steps=[
+                PlanStep(1, "join", StepType.JOIN,
+                         tables=["orders", "order_product"],
+                         joins=[JoinSpec("orders", "order_product",
+                                         "fake_id", "order_id")]),
+            ],
+        )
+        validated = validate_plan(plan, SAMPLE_SCHEMA)
+        assert validated.status == PlanStatus.FAILED
+        assert any("fake_id" in e and "orders" in e
+                    for e in validated.validation_errors)
+
+    def test_right_join_key_missing(self):
+        plan = QueryPlan(
+            "q", "complex", 0.5, 0.9,
+            steps=[
+                PlanStep(1, "join", StepType.JOIN,
+                         tables=["orders", "order_product"],
+                         joins=[JoinSpec("orders", "order_product",
+                                         "id", "bad_fk")]),
+            ],
+        )
+        validated = validate_plan(plan, SAMPLE_SCHEMA)
+        assert validated.status == PlanStatus.FAILED
+        assert any("bad_fk" in e and "order_product" in e
+                    for e in validated.validation_errors)
+
+    def test_both_join_keys_missing(self):
+        plan = QueryPlan(
+            "q", "complex", 0.5, 0.9,
+            steps=[
+                PlanStep(1, "join", StepType.JOIN,
+                         tables=["orders", "order_product"],
+                         joins=[JoinSpec("orders", "order_product",
+                                         "nope_l", "nope_r")]),
+            ],
+        )
+        validated = validate_plan(plan, SAMPLE_SCHEMA)
+        assert validated.status == PlanStatus.FAILED
+        errs = validated.validation_errors
+        assert any("nope_l" in e for e in errs)
+        assert any("nope_r" in e for e in errs)
+
+
+class TestDependsOnChainValidation:
+    """Validation class 3: depends_on must form a valid DAG."""
+
+    def test_valid_chain_passes(self):
+        plan = QueryPlan(
+            "q", "complex", 0.5, 0.9,
+            steps=[
+                PlanStep(1, "step1", StepType.SCAN, tables=["orders"]),
+                PlanStep(2, "step2", StepType.AGGREGATE, tables=["orders"],
+                         depends_on=[1]),
+                PlanStep(3, "step3", StepType.ORDER, tables=["orders"],
+                         depends_on=[2]),
+            ],
+        )
+        validated = validate_plan(plan, SAMPLE_SCHEMA)
+        assert validated.status == PlanStatus.VALIDATED
+
+    def test_self_dependency_rejected(self):
+        plan = QueryPlan(
+            "q", "complex", 0.5, 0.9,
+            steps=[
+                PlanStep(1, "step1", StepType.SCAN, tables=["orders"],
+                         depends_on=[1]),
+            ],
+        )
+        validated = validate_plan(plan, SAMPLE_SCHEMA)
+        assert validated.status == PlanStatus.FAILED
+        assert any("not earlier" in e for e in validated.validation_errors)
+
+    def test_two_step_cycle_rejected(self):
+        """Step 1 → 2, step 2 → 1 is a cycle."""
+        plan = QueryPlan(
+            "q", "complex", 0.5, 0.9,
+            steps=[
+                PlanStep(1, "step1", StepType.SCAN, tables=["orders"],
+                         depends_on=[2]),
+                PlanStep(2, "step2", StepType.SCAN, tables=["orders"],
+                         depends_on=[1]),
+            ],
+        )
+        validated = validate_plan(plan, SAMPLE_SCHEMA)
+        assert validated.status == PlanStatus.FAILED
+        # Should detect either the forward ref or the cycle
+        assert len(validated.validation_errors) > 0
+
+    def test_three_step_cycle_rejected(self):
+        """1→2, 2→3, 3→1 forms a cycle."""
+        plan = QueryPlan(
+            "q", "complex", 0.5, 0.9,
+            steps=[
+                PlanStep(1, "s1", StepType.SCAN, tables=["orders"]),
+                PlanStep(2, "s2", StepType.SCAN, tables=["orders"],
+                         depends_on=[1]),
+                PlanStep(3, "s3", StepType.SCAN, tables=["orders"],
+                         depends_on=[2]),
+                PlanStep(4, "s4", StepType.SCAN, tables=["orders"],
+                         depends_on=[3]),
+            ],
+        )
+        # Valid chain – should pass
+        validated = validate_plan(plan, SAMPLE_SCHEMA)
+        assert validated.status == PlanStatus.VALIDATED
+
+    def test_dangling_dependency_rejected(self):
+        plan = QueryPlan(
+            "q", "complex", 0.5, 0.9,
+            steps=[
+                PlanStep(1, "step1", StepType.SCAN, tables=["orders"]),
+                PlanStep(2, "step2", StepType.SCAN, tables=["orders"],
+                         depends_on=[99]),  # step 99 doesn't exist
+            ],
+        )
+        validated = validate_plan(plan, SAMPLE_SCHEMA)
+        assert validated.status == PlanStatus.FAILED
+        assert any("99" in e and "does not exist" in e
+                    for e in validated.validation_errors)
+
+
+class TestAggregationGroupByValidation:
+    """Validation class 4: aggregation/group_by consistency."""
+
+    def test_aggregation_with_correct_group_by(self):
+        plan = QueryPlan(
+            "q", "complex", 0.5, 0.9,
+            steps=[
+                PlanStep(1, "agg", StepType.AGGREGATE,
+                         tables=["orders"],
+                         columns=["customer_id", "total_inc_tax"],
+                         aggregations=[AggregationSpec("SUM", "total_inc_tax", "revenue")],
+                         group_by=["customer_id"]),
+            ],
+        )
+        validated = validate_plan(plan, SAMPLE_SCHEMA)
+        assert validated.status == PlanStatus.VALIDATED
+
+    def test_missing_group_by_rejected(self):
+        """Non-aggregated column without group_by → error."""
+        plan = QueryPlan(
+            "q", "complex", 0.5, 0.9,
+            steps=[
+                PlanStep(1, "agg", StepType.AGGREGATE,
+                         tables=["orders"],
+                         columns=["customer_id", "total_inc_tax"],
+                         aggregations=[AggregationSpec("SUM", "total_inc_tax", "revenue")],
+                         group_by=[]),  # customer_id not grouped!
+            ],
+        )
+        validated = validate_plan(plan, SAMPLE_SCHEMA)
+        assert validated.status == PlanStatus.FAILED
+        assert any("customer_id" in e and "neither aggregated nor in group_by" in e
+                    for e in validated.validation_errors)
+
+    def test_all_columns_aggregated_no_group_by_needed(self):
+        """If every column is aggregated, no group_by is required."""
+        plan = QueryPlan(
+            "q", "simple", 0.1, 0.9,
+            steps=[
+                PlanStep(1, "total", StepType.AGGREGATE,
+                         tables=["orders"],
+                         columns=["total_inc_tax"],
+                         aggregations=[AggregationSpec("SUM", "total_inc_tax", "revenue")],
+                         group_by=[]),
+            ],
+        )
+        validated = validate_plan(plan, SAMPLE_SCHEMA)
+        assert validated.status == PlanStatus.VALIDATED
+
+    def test_group_by_column_not_in_schema_rejected(self):
+        """group_by references a column that doesn't exist in the schema."""
+        plan = QueryPlan(
+            "q", "complex", 0.5, 0.9,
+            steps=[
+                PlanStep(1, "agg", StepType.AGGREGATE,
+                         tables=["orders"],
+                         columns=["total_inc_tax"],
+                         aggregations=[AggregationSpec("SUM", "total_inc_tax", "revenue")],
+                         group_by=["phantom_col"]),
+            ],
+        )
+        validated = validate_plan(plan, SAMPLE_SCHEMA)
+        assert validated.status == PlanStatus.FAILED
+        assert any("phantom_col" in e and "not found" in e
+                    for e in validated.validation_errors)
+
+    def test_no_aggregation_no_group_by_check(self):
+        """Steps without aggregations skip the group_by consistency check."""
+        plan = QueryPlan(
+            "q", "simple", 0.1, 0.9,
+            steps=[
+                PlanStep(1, "scan", StepType.SCAN,
+                         tables=["orders"],
+                         columns=["id", "total_inc_tax"]),
+            ],
+        )
+        validated = validate_plan(plan, SAMPLE_SCHEMA)
+        assert validated.status == PlanStatus.VALIDATED
+
+    def test_multiple_validation_errors_combined(self):
+        """A plan with multiple issues should report all of them."""
+        plan = QueryPlan(
+            "q", "complex", 0.5, 0.9,
+            steps=[
+                PlanStep(1, "bad step", StepType.JOIN,
+                         tables=["orders"],
+                         columns=["nonexistent_col"],
+                         joins=[JoinSpec("orders", "order_product",
+                                         "id", "bad_fk")],
+                         aggregations=[AggregationSpec("SUM", "total_inc_tax", "rev")],
+                         group_by=[]),
+            ],
+        )
+        validated = validate_plan(plan, SAMPLE_SCHEMA)
+        assert validated.status == PlanStatus.FAILED
+        assert validated.failure_stage == FailureStage.PLAN_VALIDATION
+        # Should have column, join-key, and agg/group_by errors
+        assert len(validated.validation_errors) >= 3
+
+
+# =====================================================================
 # SQL compilation validation
 # =====================================================================
 

@@ -197,47 +197,167 @@ def _build_plan(question: str, data: Dict[str, Any], complexity_info: dict) -> Q
 
 # ── Validation ───────────────────────────────────────────────
 
+def _resolve_column(
+    col: str,
+    step_tables: List[str],
+    known_columns: set,
+) -> bool:
+    """Return True if *col* can be resolved against the schema.
+
+    Handles both qualified (``table.column``) and bare column names.
+    A qualified name must reference a table visible in this step.
+    A bare name is valid if it exists in **any** of the step's tables.
+    """
+    if "." in col:
+        tbl, c = col.split(".", 1)
+        return tbl in step_tables and (tbl, c) in known_columns
+    return any((t, col) in known_columns for t in step_tables)
+
+
+def _detect_depends_on_cycle(steps: List[PlanStep]) -> Optional[List[int]]:
+    """Return a cycle path if dependency graph has a cycle, else ``None``.
+
+    Uses iterative DFS with three-colour marking (white/grey/black).
+    """
+    adj: Dict[int, List[int]] = {s.step_number: list(s.depends_on) for s in steps}
+    WHITE, GREY, BLACK = 0, 1, 2
+    colour: Dict[int, int] = {n: WHITE for n in adj}
+    parent: Dict[int, Optional[int]] = {n: None for n in adj}
+
+    for start in adj:
+        if colour[start] != WHITE:
+            continue
+        stack = [start]
+        while stack:
+            node = stack[-1]
+            if colour[node] == WHITE:
+                colour[node] = GREY
+                for dep in adj.get(node, []):
+                    if dep not in colour:
+                        continue  # dangling ref – caught elsewhere
+                    if colour[dep] == GREY:
+                        # Found cycle – reconstruct path
+                        cycle = [dep, node]
+                        p = parent.get(node)
+                        while p is not None and p != dep:
+                            cycle.append(p)
+                            p = parent.get(p)
+                        cycle.append(dep)
+                        return list(reversed(cycle))
+                    if colour[dep] == WHITE:
+                        parent[dep] = node
+                        stack.append(dep)
+            else:
+                colour[node] = BLACK
+                stack.pop()
+    return None
+
+
 def validate_plan(plan: QueryPlan, schema_items: List[Dict]) -> QueryPlan:
     """
-    Deterministic checks against the retrieved schema.
+    Deterministic schema-aware checks.
+
+    Validation classes
+    ------------------
+    1. **Table existence** – every referenced table must be in the schema.
+    2. **Column existence** – every referenced column must exist in one of
+       the step's tables (or be fully qualified ``table.col``).
+    3. **Join-key existence** – join columns must exist on their respective
+       sides.
+    4. **Dependency ordering** – ``depends_on`` must reference earlier steps
+       only, with no forward references, dangling refs, or cycles.
+    5. **Aggregation / GROUP BY consistency** – non-aggregated columns in a
+       step that contains aggregations must appear in ``group_by``.
 
     Modifies ``plan.validation_errors`` and ``plan.status`` in place.
     """
     known_tables = {s["table"] for s in schema_items}
     known_columns = {(s["table"], s["column"]) for s in schema_items}
+    # Also build a per-table column set for fast lookup
+    table_columns: Dict[str, set] = {}
+    for s in schema_items:
+        table_columns.setdefault(s["table"], set()).add(s["column"])
+
     errors: List[str] = []
 
     if not plan.steps:
         errors.append("Plan has no steps.")
 
+    existing_steps = {s.step_number for s in plan.steps}
+
     for step in plan.steps:
-        # Check tables exist
+        pfx = f"Step {step.step_number}"
+
+        # ── 1. Table existence ──────────────────────────────
         for tbl in step.tables:
             if tbl not in known_tables:
-                errors.append(f"Step {step.step_number}: unknown table '{tbl}'.")
+                errors.append(f"{pfx}: unknown table '{tbl}'.")
 
-        # Check joins reference known tables
+        # Collect all tables visible in this step (explicit + join sides)
+        visible_tables = [t for t in step.tables if t in known_tables]
+        for j in step.joins:
+            if j.left_table in known_tables and j.left_table not in visible_tables:
+                visible_tables.append(j.left_table)
+            if j.right_table in known_tables and j.right_table not in visible_tables:
+                visible_tables.append(j.right_table)
+
+        # ── 2. Column existence ─────────────────────────────
+        for col in step.columns:
+            if not _resolve_column(col, visible_tables, known_columns):
+                errors.append(f"{pfx}: column '{col}' not found in tables {visible_tables}.")
+
+        # ── 3. Join-key existence ───────────────────────────
         for j in step.joins:
             if j.left_table not in known_tables:
-                errors.append(
-                    f"Step {step.step_number}: join references unknown table '{j.left_table}'."
-                )
+                errors.append(f"{pfx}: join references unknown table '{j.left_table}'.")
+            else:
+                left_cols = table_columns.get(j.left_table, set())
+                if j.left_column not in left_cols:
+                    errors.append(
+                        f"{pfx}: join key '{j.left_column}' does not exist "
+                        f"in table '{j.left_table}'."
+                    )
             if j.right_table not in known_tables:
-                errors.append(
-                    f"Step {step.step_number}: join references unknown table '{j.right_table}'."
-                )
+                errors.append(f"{pfx}: join references unknown table '{j.right_table}'.")
+            else:
+                right_cols = table_columns.get(j.right_table, set())
+                if j.right_column not in right_cols:
+                    errors.append(
+                        f"{pfx}: join key '{j.right_column}' does not exist "
+                        f"in table '{j.right_table}'."
+                    )
 
-        # Check depends_on references exist
-        existing_steps = {s.step_number for s in plan.steps}
+        # ── 4a. Dependency ordering (per-step) ─────────────
         for dep in step.depends_on:
             if dep not in existing_steps:
-                errors.append(
-                    f"Step {step.step_number}: depends_on step {dep} does not exist."
-                )
-            if dep >= step.step_number:
-                errors.append(
-                    f"Step {step.step_number}: depends_on step {dep} is not earlier."
-                )
+                errors.append(f"{pfx}: depends_on step {dep} does not exist.")
+            elif dep >= step.step_number:
+                errors.append(f"{pfx}: depends_on step {dep} is not earlier.")
+
+        # ── 5. Aggregation / GROUP BY consistency ───────────
+        if step.aggregations:
+            agg_columns = {a.column for a in step.aggregations}
+            # Columns that are selected but not aggregated must be grouped
+            for col in step.columns:
+                bare = col.split(".", 1)[-1] if "." in col else col
+                if bare not in agg_columns and bare not in step.group_by:
+                    errors.append(
+                        f"{pfx}: column '{col}' is neither aggregated nor in group_by."
+                    )
+            # group_by entries must also resolve against schema
+            for gb in step.group_by:
+                if not _resolve_column(gb, visible_tables, known_columns):
+                    errors.append(
+                        f"{pfx}: group_by column '{gb}' not found in tables {visible_tables}."
+                    )
+
+    # ── 4b. Dependency cycle detection (global) ─────────────
+    if plan.steps:
+        cycle = _detect_depends_on_cycle(plan.steps)
+        if cycle is not None:
+            errors.append(
+                f"Dependency cycle detected: {' -> '.join(str(s) for s in cycle)}."
+            )
 
     plan.validation_errors = errors
     plan.status = PlanStatus.VALIDATED if not errors else PlanStatus.FAILED
