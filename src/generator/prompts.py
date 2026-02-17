@@ -6,7 +6,10 @@ Change the ACTIVE_* variables to switch between versions.
 
 Version History:
 - V1: Baseline zero-shot prompts
-- V2: Quoting fix + few-shot examples (SQLite only)
+- V2 (SQLite): Quoting fix + few-shot examples
+- V2 (BigQuery): Enhanced with aliasing rules + few-shot examples to fix column ambiguity errors
+- V3 (BigQuery): Fixed incorrect order_product→category_tree join; uses product_category junction table.
+                  Changed category label from search_keywords to name.
 """
 
 # =============================================================================
@@ -14,7 +17,7 @@ Version History:
 # Change these to switch prompt versions for evaluation
 # =============================================================================
 ACTIVE_SQLITE_VERSION = "V2"  # Options: "V1", "V2"
-ACTIVE_BIGQUERY_VERSION = "V1"  # Options: "V1"
+ACTIVE_BIGQUERY_VERSION = "V3"  # Options: "V1", "V2", "V3"
 
 
 # =============================================================================
@@ -111,6 +114,161 @@ Rules:
 - Output ONLY the SQL query
 """
 
+BIGQUERY_V2 = """You are an expert SQL query writer for Google BigQuery.
+
+Task: Generate a valid BigQuery SQL query for the given question.
+
+Question:
+{question}
+
+Available schema columns:
+{schema_context}
+
+CRITICAL RULES:
+1. Output ONLY the SQL query - no explanations, no markdown
+2. Use backticks (`) around table references: `dataset.table`
+3. ALWAYS create table aliases: `dataset.table` AS t1
+4. ALWAYS reference columns using aliases: t1.column_name, t2.column_name
+5. NEVER put table.column inside backticks — WRONG: `orders.id`, RIGHT: t1.id
+6. NEVER reference original table names after aliasing — use t1, t2, etc.
+7. Do NOT invent tables or columns not in the schema
+8. For TIMESTAMP columns, use DATE() to cast: DATE(timestamp_col)
+9. Use DATE_TRUNC for month/year grouping: DATE_TRUNC(DATE(col), MONTH)
+10. NEVER use TIMESTAMP_SUB with MONTH or YEAR intervals
+
+Examples:
+
+Q: What is the total revenue for all orders?
+Schema:
+nb-sandbox.dataset.orders.id (INT64)
+nb-sandbox.dataset.orders.total_inc_tax (FLOAT64)
+SQL:
+SELECT SUM(total_inc_tax) AS total_revenue
+FROM `nb-sandbox.dataset.orders`
+
+Q: Show product names and their order quantities
+Schema:
+nb-sandbox.dataset.order_product.order_id (INT64)
+nb-sandbox.dataset.order_product.product_id (INT64)
+nb-sandbox.dataset.order_product.quantity (INT64)
+nb-sandbox.dataset.products.product_id (INT64)
+nb-sandbox.dataset.products.name (STRING)
+SQL:
+SELECT t2.name, t1.quantity
+FROM `nb-sandbox.dataset.order_product` AS t1
+JOIN `nb-sandbox.dataset.products` AS t2 ON t1.product_id = t2.product_id
+
+Q: Count orders per month in 2024
+Schema:
+nb-sandbox.dataset.orders.id (INT64)
+nb-sandbox.dataset.orders.date_created (TIMESTAMP)
+SQL:
+SELECT DATE_TRUNC(DATE(date_created), MONTH) AS month, COUNT(*) AS order_count
+FROM `nb-sandbox.dataset.orders`
+WHERE DATE(date_created) >= '2024-01-01' AND DATE(date_created) < '2025-01-01'
+GROUP BY month
+ORDER BY month
+
+Q: Show revenue per category with category names
+Schema:
+nb-sandbox.dataset.orders.id (INT64)
+nb-sandbox.dataset.orders.total_inc_tax (FLOAT64)
+nb-sandbox.dataset.order_product.order_id (INT64)
+nb-sandbox.dataset.order_product.product_id (INT64)
+nb-sandbox.dataset.category_tree.category_id (INT64)
+nb-sandbox.dataset.category_tree.search_keywords (STRING)
+SQL:
+SELECT t3.search_keywords, SUM(t1.total_inc_tax) AS revenue
+FROM `nb-sandbox.dataset.orders` AS t1
+JOIN `nb-sandbox.dataset.order_product` AS t2 ON t1.id = t2.order_id
+JOIN `nb-sandbox.dataset.category_tree` AS t3 ON t2.product_id = t3.category_id
+GROUP BY t3.search_keywords
+
+Now generate SQL for:
+Question: {question}
+SQL:"""
+
+# BigQuery V3 — fixes the incorrect product_id→category_id join from V2.
+# The revenue-per-category example now routes through the product_category
+# junction table to correctly resolve products to categories.
+BIGQUERY_V3 = """You are an expert SQL query writer for Google BigQuery.
+
+Task: Generate a valid BigQuery SQL query for the given question.
+
+Question:
+{question}
+
+Available schema columns:
+{schema_context}
+
+CRITICAL RULES:
+1. Output ONLY the SQL query - no explanations, no markdown
+2. Use backticks (`) around table references: `dataset.table`
+3. ALWAYS create table aliases: `dataset.table` AS t1
+4. ALWAYS reference columns using aliases: t1.column_name, t2.column_name
+5. NEVER put table.column inside backticks — WRONG: `orders.id`, RIGHT: t1.id
+6. NEVER reference original table names after aliasing — use t1, t2, etc.
+7. Do NOT invent tables or columns not in the schema
+8. For TIMESTAMP columns, use DATE() to cast: DATE(timestamp_col)
+9. Use DATE_TRUNC for month/year grouping: DATE_TRUNC(DATE(col), MONTH)
+10. NEVER use TIMESTAMP_SUB with MONTH or YEAR intervals
+11. When joining products to categories, use the product_category junction table
+
+Examples:
+
+Q: What is the total revenue for all orders?
+Schema:
+nb-sandbox.dataset.orders.id (INT64)
+nb-sandbox.dataset.orders.total_inc_tax (FLOAT64)
+SQL:
+SELECT SUM(total_inc_tax) AS total_revenue
+FROM `nb-sandbox.dataset.orders`
+
+Q: Show product names and their order quantities
+Schema:
+nb-sandbox.dataset.order_product.order_id (INT64)
+nb-sandbox.dataset.order_product.product_id (INT64)
+nb-sandbox.dataset.order_product.quantity (INT64)
+nb-sandbox.dataset.products.product_id (INT64)
+nb-sandbox.dataset.products.name (STRING)
+SQL:
+SELECT t2.name, t1.quantity
+FROM `nb-sandbox.dataset.order_product` AS t1
+JOIN `nb-sandbox.dataset.products` AS t2 ON t1.product_id = t2.product_id
+
+Q: Count orders per month in 2024
+Schema:
+nb-sandbox.dataset.orders.id (INT64)
+nb-sandbox.dataset.orders.date_created (TIMESTAMP)
+SQL:
+SELECT DATE_TRUNC(DATE(date_created), MONTH) AS month, COUNT(*) AS order_count
+FROM `nb-sandbox.dataset.orders`
+WHERE DATE(date_created) >= '2024-01-01' AND DATE(date_created) < '2025-01-01'
+GROUP BY month
+ORDER BY month
+
+Q: Show revenue per category with category names
+Schema:
+nb-sandbox.dataset.orders.id (INT64)
+nb-sandbox.dataset.orders.total_inc_tax (FLOAT64)
+nb-sandbox.dataset.order_product.order_id (INT64)
+nb-sandbox.dataset.order_product.product_id (INT64)
+nb-sandbox.dataset.product_category.product_id (INT64)
+nb-sandbox.dataset.product_category.category_id (INT64)
+nb-sandbox.dataset.category_tree.category_id (INT64)
+nb-sandbox.dataset.category_tree.name (STRING)
+SQL:
+SELECT t4.name AS category_name, SUM(t1.total_inc_tax) AS revenue
+FROM `nb-sandbox.dataset.orders` AS t1
+JOIN `nb-sandbox.dataset.order_product` AS t2 ON t1.id = t2.order_id
+JOIN `nb-sandbox.dataset.product_category` AS t3 ON t2.product_id = t3.product_id
+JOIN `nb-sandbox.dataset.category_tree` AS t4 ON t3.category_id = t4.category_id
+GROUP BY t4.name
+
+Now generate SQL for:
+Question: {question}
+SQL:"""
+
 
 # =============================================================================
 # PROMPT GETTER FUNCTIONS
@@ -129,6 +287,8 @@ def get_bigquery_prompt() -> str:
     """Get the currently active BigQuery prompt template."""
     prompts = {
         "V1": BIGQUERY_V1,
+        "V2": BIGQUERY_V2,
+        "V3": BIGQUERY_V3,
     }
     return prompts[ACTIVE_BIGQUERY_VERSION]
 

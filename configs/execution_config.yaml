@@ -1,0 +1,55 @@
+# SQL Execution Safety & Cost Configuration
+# -------------------------------------------
+# Controls pre-execution policy checks, cost caps, and timeout behaviour.
+
+# ── Tenant / Project ────────────────────────────────────────
+# All BigQuery identifiers are resolved from here (no hardcoded values).
+# Override via env vars: BQ_PROJECT, BQ_DATASET, BQ_LOCATION.
+bigquery:
+  project: ${BQ_PROJECT}          # resolved at runtime from env
+  dataset: ${BQ_DATASET}          # resolved at runtime from env
+  location: ${BQ_LOCATION:asia-southeast1}     # default asia-southeast1 if unset
+
+# ── SQL Policy ──────────────────────────────────────────────
+# Only the statement classes listed in `allowed_statement_types` may execute.
+# Everything else is blocked *before* it reaches BigQuery.
+sql_policy:
+  allowed_statement_types:
+    - SELECT           # read-only queries
+  blocked_keywords:    # additional keyword blocklist (case-insensitive)
+    - DROP
+    - TRUNCATE
+    - DELETE
+    - INSERT
+    - UPDATE
+    - ALTER
+    - CREATE
+    - MERGE
+    - GRANT
+    - REVOKE
+    - CALL
+    - EXECUTE
+    - EXEC
+  max_query_length: 10000   # characters – reject absurdly long payloads
+
+# ── Cost / Bytes Guard ──────────────────────────────────────
+# BigQuery dry-run returns estimated bytes processed.
+# Queries exceeding `max_bytes` are blocked before real execution.
+cost_guard:
+  enabled: true
+  max_bytes: 1_073_741_824       # 1 GB – adjust per environment
+  max_bytes_display: "1 GB"
+  warn_bytes: 536_870_912        # 512 MB – emit warning but allow
+
+# ── Timeout ─────────────────────────────────────────────────
+timeout:
+  query_timeout_seconds: 30      # per-query wall-clock limit
+  job_retry_count: 0             # BigQuery automatic retries (0 = none)
+
+# ── Query Priority ──────────────────────────────────────────
+query_priority: INTERACTIVE      # INTERACTIVE | BATCH
+
+# ── Structured Logging ──────────────────────────────────────
+logging:
+  emit_json: true                # structured JSON lines to stderr
+  include_sql_in_logs: false     # disable to avoid PII/sensitive data in logs
