@@ -40,6 +40,13 @@ cost_guard:
   max_bytes: 1_073_741_824       # 1 GB – adjust per environment
   max_bytes_display: "1 GB"
   warn_bytes: 536_870_912        # 512 MB – emit warning but allow
+  fail_closed_on_dry_run_error: true   # block query when dry-run itself fails
+  maximum_bytes_billed: 1_073_741_824  # hard cap enforced by BQ on real queries
+
+# ── Row Limit ───────────────────────────────────────────────
+# Maximum number of rows returned to the caller.  Extra rows are silently
+# truncated after fetch.  Set to 0 or omit to disable.
+max_returned_rows: 10000
 
 # ── Timeout ─────────────────────────────────────────────────
 timeout:

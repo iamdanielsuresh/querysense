@@ -168,6 +168,17 @@ class BigQueryExecutor:
         self._max_bytes: int = int(cg.get("max_bytes", 1_073_741_824))
         self._max_bytes_display: str = cg.get("max_bytes_display", "1 GB")
         self._warn_bytes: int = int(cg.get("warn_bytes", 536_870_912))
+        self._fail_closed: bool = cg.get("fail_closed_on_dry_run_error", True)
+        _max_billed_raw = cg.get("maximum_bytes_billed")
+        self._maximum_bytes_billed: Optional[int] = (
+            int(_max_billed_raw) if _max_billed_raw is not None else None
+        )
+
+        # Row limit
+        _row_raw = self._cfg.get("max_returned_rows")
+        self._max_returned_rows: Optional[int] = (
+            int(_row_raw) if _row_raw else None
+        )
 
         # Timeout & priority
         to = self._cfg.get("timeout", {})
@@ -201,7 +212,9 @@ class BigQueryExecutor:
             max_query_length=self._max_query_length,
         )
         if not verdict.is_allowed:
-            _log_event("query_blocked_policy", {
+            _log_event("guardrail_decision", {
+                "guardrail": "sql_policy",
+                "action": "blocked",
                 "sql": log_sql,
                 "reasons": verdict.reasons,
             }, emit_json=self._emit_json)
@@ -223,7 +236,9 @@ class BigQueryExecutor:
                         f"Estimated bytes ({estimated_bytes:,}) exceed cost cap "
                         f"({self._max_bytes_display})."
                     )
-                    _log_event("query_blocked_cost", {
+                    _log_event("guardrail_decision", {
+                        "guardrail": "cost_cap",
+                        "action": "blocked",
                         "sql": log_sql,
                         "estimated_bytes": estimated_bytes,
                         "max_bytes": self._max_bytes,
@@ -237,10 +252,41 @@ class BigQueryExecutor:
                         error="Query blocked by cost guard: " + reason,
                     )
                 if estimated_bytes > self._warn_bytes:
+                    _log_event("guardrail_decision", {
+                        "guardrail": "cost_warn",
+                        "action": "warned",
+                        "estimated_bytes": estimated_bytes,
+                        "warn_bytes": self._warn_bytes,
+                    }, emit_json=self._emit_json)
                     logger.warning(
                         "Cost warning: query will process ~%s bytes", f"{estimated_bytes:,}"
                     )
+                else:
+                    _log_event("guardrail_decision", {
+                        "guardrail": "cost_cap",
+                        "action": "allowed",
+                        "estimated_bytes": estimated_bytes,
+                        "max_bytes": self._max_bytes,
+                    }, emit_json=self._emit_json)
             else:
+                # Dry-run itself failed — fail-closed if configured
+                if self._fail_closed:
+                    reason = (
+                        "Dry-run failed and fail_closed_on_dry_run_error is enabled; "
+                        "query blocked as a precaution."
+                    )
+                    _log_event("guardrail_decision", {
+                        "guardrail": "dry_run_fail_closed",
+                        "action": "blocked",
+                        "sql": log_sql,
+                    }, emit_json=self._emit_json)
+                    return _execution_envelope(
+                        success=False,
+                        sql=sql,
+                        blocked=True,
+                        block_reasons=[reason],
+                        error="Query blocked: " + reason,
+                    )
                 estimated_bytes = None
         else:
             estimated_bytes = None
@@ -257,13 +303,17 @@ class BigQueryExecutor:
             job = self._client.query(sql, job_config=job_config)
             return {"estimated_bytes": job.total_bytes_processed}
         except Exception as exc:
-            logger.warning("Dry-run failed (query will still be attempted): %s", exc)
+            _log_event("dry_run_error", {
+                "error": str(exc),
+                "fail_closed": self._fail_closed,
+            }, emit_json=self._emit_json)
+            logger.warning("Dry-run failed: %s", exc)
             return None
 
     def _run_query(
         self, sql: str, *, estimated_bytes: Optional[int] = None
     ) -> Dict[str, Any]:
-        """Execute the query with timeout and priority."""
+        """Execute the query with timeout, priority, and bytes-billed cap."""
         try:
             job_config = bigquery.QueryJobConfig(
                 use_query_cache=True,
@@ -273,18 +323,37 @@ class BigQueryExecutor:
                     else bigquery.QueryPriority.INTERACTIVE
                 ),
             )
+            # Server-side bytes-billed hard cap
+            if self._maximum_bytes_billed is not None:
+                job_config.maximum_bytes_billed = self._maximum_bytes_billed
 
             t0 = time.time()
             job = self._client.query(sql, job_config=job_config)
             rows_iter = job.result(timeout=self._query_timeout)
             rows = [dict(row) for row in rows_iter]
+
+            # Row-limit guardrail
+            rows_truncated = False
+            if self._max_returned_rows and len(rows) > self._max_returned_rows:
+                rows_truncated = True
+                rows = rows[: self._max_returned_rows]
+
             elapsed = time.time() - t0
 
             _log_event("query_success", {
                 "elapsed": round(elapsed, 3),
                 "row_count": len(rows),
+                "rows_truncated": rows_truncated,
                 "estimated_bytes": estimated_bytes,
+                "maximum_bytes_billed": self._maximum_bytes_billed,
             }, emit_json=self._emit_json)
+
+            if rows_truncated:
+                _log_event("guardrail_decision", {
+                    "guardrail": "max_returned_rows",
+                    "action": "truncated",
+                    "max_returned_rows": self._max_returned_rows,
+                }, emit_json=self._emit_json)
 
             return _execution_envelope(
                 success=True,
