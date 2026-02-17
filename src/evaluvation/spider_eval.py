@@ -24,6 +24,7 @@ Usage:
     python src/evaluvation/spider_eval.py --mode baseline --output results/baseline
 """
 
+import re
 import sys
 import json
 import sqlite3
@@ -33,7 +34,7 @@ import time
 from collections import Counter
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, List, Tuple, Any, Optional
+from typing import Dict, List, Tuple, Set, Any, Optional
 
 # ---------------------------------------------------------------------------
 # Path setup
@@ -224,6 +225,146 @@ def compare_results(
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# RETRIEVAL QUALITY METRICS  (table recall, column recall, join coverage)
+# ═══════════════════════════════════════════════════════════════════════
+
+def _extract_gold_tables(sql: str, table_names: List[str]) -> Set[str]:
+    """
+    Return the subset of *table_names* that appear in the gold SQL string.
+
+    Matching is case-insensitive, whole-word.  This is reliable for Spider
+    because table names are distinct identifiers that do not collide with
+    SQL keywords.
+    """
+    found: Set[str] = set()
+    for tbl in table_names:
+        if re.search(r'\b' + re.escape(tbl) + r'\b', sql, re.IGNORECASE):
+            found.add(tbl)
+    return found
+
+
+def _extract_gold_columns(
+    sql: str,
+    columns: List[Dict],
+    table_names: List[str],
+) -> Set[Tuple[str, str]]:
+    """
+    Return (table, column) pairs referenced in *sql*.
+
+    Strategy:
+    1. Match qualified ``table.column`` patterns first (highest confidence).
+    2. For remaining columns, match bare column names as whole words but
+       only when the column's table is already known to be in the SQL.
+    3. ``SELECT *`` is treated as referencing every column in every gold
+       table (conservative — ensures recall is not understated).
+    """
+    found: Set[Tuple[str, str]] = set()
+    gold_tables = _extract_gold_tables(sql, table_names)
+
+    for col_info in columns:
+        tbl = col_info["table"]
+        col = col_info["column"]
+        # Qualified reference: table.column
+        qual = r'\b' + re.escape(tbl) + r'\s*\.\s*' + re.escape(col) + r'\b'
+        if re.search(qual, sql, re.IGNORECASE):
+            found.add((tbl, col))
+            continue
+        # Bare column when its table is a gold table
+        if tbl in gold_tables:
+            bare = r'\b' + re.escape(col) + r'\b'
+            if re.search(bare, sql, re.IGNORECASE):
+                found.add((tbl, col))
+
+    # Handle SELECT *: credit every column of every gold table
+    if re.search(r'SELECT\s+\*', sql, re.IGNORECASE):
+        for col_info in columns:
+            if col_info["table"] in gold_tables:
+                found.add((col_info["table"], col_info["column"]))
+
+    return found
+
+
+def _extract_gold_join_pairs(
+    sql: str,
+    columns: List[Dict],
+) -> List[Tuple[Tuple[str, str], Tuple[str, str]]]:
+    """
+    Extract join equality pairs from ON / WHERE clauses.
+
+    Returns a list of ((table_a, col_a), (table_b, col_b)) for each
+    ``t1.c1 = t2.c2``  pattern found in the SQL.  Only qualified
+    ``table.column`` references are matched to avoid false positives.
+    """
+    # Build a set of valid (table, col) for validation
+    valid = {(c["table"].lower(), c["column"].lower()) for c in columns}
+
+    pattern = (
+        r'\b([A-Za-z_]\w*)\s*\.\s*([A-Za-z_]\w*)'
+        r'\s*=\s*'
+        r'\b([A-Za-z_]\w*)\s*\.\s*([A-Za-z_]\w*)'
+    )
+    pairs = []
+    for m in re.finditer(pattern, sql):
+        t1, c1, t2, c2 = m.group(1), m.group(2), m.group(3), m.group(4)
+        lhs = (t1.lower(), c1.lower())
+        rhs = (t2.lower(), c2.lower())
+        # Only keep pairs where both sides are valid schema references
+        # (also accept aliases — but then we fall back to best-effort)
+        if lhs in valid and rhs in valid:
+            pairs.append(((t1, c1), (t2, c2)))
+        elif lhs != rhs:  # accept even if alias; still useful signal
+            pairs.append(((t1, c1), (t2, c2)))
+    return pairs
+
+
+def compute_table_recall(
+    gold_tables: Set[str], retrieved_items: List[Dict],
+) -> float:
+    """Fraction of *gold_tables* whose table name appears among *retrieved_items*."""
+    if not gold_tables:
+        return 1.0  # vacuously true
+    retrieved_tables = {item["table"] for item in retrieved_items}
+    recalled = gold_tables & retrieved_tables
+    return len(recalled) / len(gold_tables)
+
+
+def compute_column_recall(
+    gold_columns: Set[Tuple[str, str]], retrieved_items: List[Dict],
+) -> float:
+    """Fraction of *gold_columns* present in *retrieved_items*."""
+    if not gold_columns:
+        return 1.0
+    retrieved = {
+        (item["table"], item["column"]) for item in retrieved_items
+    }
+    recalled = gold_columns & retrieved
+    return len(recalled) / len(gold_columns)
+
+
+def compute_join_coverage(
+    join_pairs: List[Tuple[Tuple[str, str], Tuple[str, str]]],
+    retrieved_items: List[Dict],
+) -> float:
+    """
+    Fraction of gold join equality pairs where **both** sides are
+    present in the retrieved schema — a proxy for join-path coverage.
+    """
+    if not join_pairs:
+        return 1.0  # no joins required
+    retrieved = {
+        (item["table"].lower(), item["column"].lower())
+        for item in retrieved_items
+    }
+    covered = 0
+    for (t1, c1), (t2, c2) in join_pairs:
+        lhs_ok = (t1.lower(), c1.lower()) in retrieved
+        rhs_ok = (t2.lower(), c2.lower()) in retrieved
+        if lhs_ok and rhs_ok:
+            covered += 1
+    return covered / len(join_pairs)
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # RETRIEVER CACHE  (one SchemaRetriever per database)
 # ═══════════════════════════════════════════════════════════════════════
 
@@ -288,6 +429,13 @@ def evaluate_single(
         "used_planner": False,
         "failure_stage": None,
         "failure_detail": None,
+        # Retrieval quality metrics (populated when retrieval is ON)
+        "table_recall": None,
+        "column_recall": None,
+        "join_coverage": None,
+        "gold_table_count": None,
+        "gold_column_count": None,
+        "gold_join_count": None,
     }
 
     use_retrieval = mode_config["retrieval"]
@@ -300,6 +448,26 @@ def evaluate_single(
         scored_results = retriever.retrieve(question, top_k=10)
         schema_items = [item for _, item in scored_results]
         result["retrieval_count"] = len(schema_items)
+
+        # ── Retrieval quality against gold SQL ──
+        all_tables = schema["tables"]
+        all_columns = schema["columns"]
+        gold_tables = _extract_gold_tables(gold_sql, all_tables)
+        gold_columns = _extract_gold_columns(gold_sql, all_columns, all_tables)
+        gold_joins = _extract_gold_join_pairs(gold_sql, all_columns)
+
+        result["table_recall"] = round(
+            compute_table_recall(gold_tables, schema_items), 4
+        )
+        result["column_recall"] = round(
+            compute_column_recall(gold_columns, schema_items), 4
+        )
+        result["join_coverage"] = round(
+            compute_join_coverage(gold_joins, schema_items), 4
+        )
+        result["gold_table_count"] = len(gold_tables)
+        result["gold_column_count"] = len(gold_columns)
+        result["gold_join_count"] = len(gold_joins)
     else:
         schema_items = schema["columns"]
 
@@ -446,6 +614,84 @@ def compute_metrics(results: List[Dict], mode_name: str) -> Dict:
     prompt_versions = get_active_versions()
     exec_err_count = failure_counts.get(FailureCategory.EXECUTION_ERROR, 0)
 
+    # ── Retrieval quality aggregates ──
+    retrieval_examples = [
+        r for r in results if r.get("table_recall") is not None
+    ]
+    n_ret = len(retrieval_examples)
+    if n_ret > 0:
+        avg_table_recall = round(
+            sum(r["table_recall"] for r in retrieval_examples) / n_ret, 4
+        )
+        avg_column_recall = round(
+            sum(r["column_recall"] for r in retrieval_examples) / n_ret, 4
+        )
+        avg_join_coverage = round(
+            sum(r["join_coverage"] for r in retrieval_examples) / n_ret, 4
+        )
+        perfect_table_recall = sum(
+            1 for r in retrieval_examples if r["table_recall"] == 1.0
+        )
+        perfect_column_recall = sum(
+            1 for r in retrieval_examples if r["column_recall"] == 1.0
+        )
+        perfect_join_coverage = sum(
+            1 for r in retrieval_examples if r["join_coverage"] == 1.0
+        )
+        # Break down by gold table count (single-table vs multi-table)
+        single_table = [
+            r for r in retrieval_examples if r["gold_table_count"] == 1
+        ]
+        multi_table = [
+            r for r in retrieval_examples if (r["gold_table_count"] or 0) > 1
+        ]
+        has_joins = [
+            r for r in retrieval_examples if (r["gold_join_count"] or 0) > 0
+        ]
+        retrieval_metrics = {
+            "retrieval_examples": n_ret,
+            "table_recall_at_k": avg_table_recall,
+            "column_recall_at_k": avg_column_recall,
+            "join_path_coverage": avg_join_coverage,
+            "perfect_table_recall_pct": round(
+                perfect_table_recall / n_ret * 100, 2
+            ),
+            "perfect_column_recall_pct": round(
+                perfect_column_recall / n_ret * 100, 2
+            ),
+            "perfect_join_coverage_pct": round(
+                perfect_join_coverage / n_ret * 100, 2
+            ),
+            "single_table": {
+                "count": len(single_table),
+                "table_recall": round(
+                    sum(r["table_recall"] for r in single_table)
+                    / len(single_table), 4
+                ) if single_table else None,
+                "column_recall": round(
+                    sum(r["column_recall"] for r in single_table)
+                    / len(single_table), 4
+                ) if single_table else None,
+            },
+            "multi_table": {
+                "count": len(multi_table),
+                "table_recall": round(
+                    sum(r["table_recall"] for r in multi_table)
+                    / len(multi_table), 4
+                ) if multi_table else None,
+                "column_recall": round(
+                    sum(r["column_recall"] for r in multi_table)
+                    / len(multi_table), 4
+                ) if multi_table else None,
+                "join_coverage": round(
+                    sum(r["join_coverage"] for r in has_joins)
+                    / len(has_joins), 4
+                ) if has_joins else None,
+            },
+        }
+    else:
+        retrieval_metrics = None
+
     return {
         "mode": mode_name,
         "total_examples": total,
@@ -468,6 +714,7 @@ def compute_metrics(results: List[Dict], mode_name: str) -> Dict:
         "orchestrator_invoked_count": orchestrator_invoked,
         "failure_stage_counts": dict(stage_counts),
         "failure_categories": dict(failure_counts),
+        "retrieval_quality": retrieval_metrics,
         "per_database": {
             db_id: {
                 "total": info["total"],
@@ -614,11 +861,78 @@ def generate_report(all_metrics: Dict[str, Dict], output_dir: Path) -> Path:
                 )
             lines.append("")
 
+    # Retrieval quality section (if any mode used retrieval)
+    has_retrieval = any(
+        m.get("retrieval_quality") for m in all_metrics.values()
+    )
+    if has_retrieval:
+        lines += [
+            "---",
+            "",
+            "## 4. Retrieval Quality Metrics",
+            "",
+            "These metrics measure how well the schema retriever surfaces",
+            "the tables, columns, and join paths needed by the gold SQL.",
+            "",
+            "| Mode | Table Recall@k | Column Recall@k | Join Coverage "
+            "| Perfect Table % | Perfect Column % | Perfect Join % |",
+            "|------|:--------------:|:---------------:|:-------------:"
+            "|:---------------:|:----------------:|:--------------:|",
+        ]
+        for mode, m in all_metrics.items():
+            rq = m.get("retrieval_quality")
+            if rq:
+                lines.append(
+                    f"| {mode} "
+                    f"| {rq['table_recall_at_k']:.4f} "
+                    f"| {rq['column_recall_at_k']:.4f} "
+                    f"| {rq['join_path_coverage']:.4f} "
+                    f"| {rq['perfect_table_recall_pct']}% "
+                    f"| {rq['perfect_column_recall_pct']}% "
+                    f"| {rq['perfect_join_coverage_pct']}% |"
+                )
+            else:
+                lines.append(f"| {mode} | — | — | — | — | — | — |")
+        lines.append("")
+
+        # Single-table vs multi-table breakdown
+        lines += [
+            "### Retrieval by query complexity",
+            "",
+            "| Mode | Segment | N | Table Recall | Column Recall | Join Coverage |",
+            "|------|---------|--:|:------------:|:-------------:|:-------------:|",
+        ]
+        for mode, m in all_metrics.items():
+            rq = m.get("retrieval_quality")
+            if not rq:
+                continue
+            st = rq.get("single_table", {})
+            mt = rq.get("multi_table", {})
+            if st.get("count"):
+                lines.append(
+                    f"| {mode} | single-table "
+                    f"| {st['count']} "
+                    f"| {st['table_recall']:.4f} "
+                    f"| {st['column_recall']:.4f} | — |"
+                )
+            if mt.get("count"):
+                jc = mt.get('join_coverage')
+                jc_str = f"{jc:.4f}" if jc is not None else "—"
+                lines.append(
+                    f"| {mode} | multi-table "
+                    f"| {mt['count']} "
+                    f"| {mt['table_recall']:.4f} "
+                    f"| {mt['column_recall']:.4f} "
+                    f"| {jc_str} |"
+                )
+        lines.append("")
+
     # Methodology section
+    meth_section = 5 if has_retrieval else 4
     lines += [
         "---",
         "",
-        "## 4. Methodology",
+        f"## {meth_section}. Methodology",
         "",
         "- **Execution Accuracy (EX):** Predicted SQL returns the same result",
         "  set as gold SQL when executed on the benchmark database.",
@@ -747,6 +1061,8 @@ def run_evaluation(
             "failure_category", "error", "error_class", "retried",
             "complexity", "complexity_score", "retrieval_count",
             "used_planner", "failure_stage", "failure_detail",
+            "table_recall", "column_recall", "join_coverage",
+            "gold_table_count", "gold_column_count", "gold_join_count",
         ]
         with open(csv_path, "w", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
@@ -812,6 +1128,16 @@ def run_evaluation(
         print("\n  Failure Categories:")
         for cat, cnt in sorted(fc.items(), key=lambda x: -x[1]):
             print(f"    {cat:<25} {cnt}")
+
+    rq = metrics.get("retrieval_quality")
+    if rq:
+        print(f"\n  Retrieval Quality  (n={rq['retrieval_examples']}):")
+        print(f"    Table Recall@k:     {rq['table_recall_at_k']:.4f}  "
+              f"(perfect: {rq['perfect_table_recall_pct']}%)")
+        print(f"    Column Recall@k:    {rq['column_recall_at_k']:.4f}  "
+              f"(perfect: {rq['perfect_column_recall_pct']}%)")
+        print(f"    Join Coverage:      {rq['join_path_coverage']:.4f}  "
+              f"(perfect: {rq['perfect_join_coverage_pct']}%)")
 
     print("=" * 60)
     return metrics, results
